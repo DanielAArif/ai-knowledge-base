@@ -1,0 +1,29 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/*.sqlite3
+venv/
+.venv/
+
+# Local Storage, Vector DB & Postgres Data
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/chroma_db/*
+!backend/chroma_db/.gitkeep
+postgres_data/
+
+# Node / React
+**/node_modules/
+**/dist/
+**/build/
+.eslintcache
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/

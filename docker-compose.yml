@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # Database PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: kb_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: kb_user
+      POSTGRES_PASSWORD: kb_password
+      POSTGRES_DB: kb_database
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Backend FastAPI
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kb_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://kb_user:kb_password@postgres:5432/kb_database
+      - JWT_SECRET=supersecretkey_ganti_saat_production
+    volumes:
+      - ./backend:/app
+      - ./backend/uploads:/app/uploads
+      - ./backend/chroma_db:/app/chroma_db
+    depends_on:
+      - postgres
+
+  # Frontend React (Vite)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: kb_frontend
+    restart: always
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
