@@ -9,6 +9,8 @@
 **/*.sqlite3
 venv/
 .venv/
+__pychache__/
+*.pyc
 
 # Local Storage, Vector DB & Postgres Data
 backend/uploads/*
@@ -27,3 +29,6 @@ postgres_data/
 .DS_Store
 .vscode/
 .idea/
+
+# Docker
+postgres_data/

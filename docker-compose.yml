@@ -7,9 +7,9 @@ services:
     container_name: kb_postgres
     restart: always
     environment:
-      POSTGRES_USER: kb_user
-      POSTGRES_PASSWORD: kb_password
-      POSTGRES_DB: kb_database
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
@@ -25,8 +25,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://kb_user:kb_password@postgres:5432/kb_database
-      - JWT_SECRET=supersecretkey_ganti_saat_production
+      - DATABASE_URL=${DATABASE_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
     volumes:
       - ./backend:/app
       - ./backend/uploads:/app/uploads

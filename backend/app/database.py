@@ -1,0 +1,23 @@
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+import os
+
+# Mengambil Database URL dari environment variabel, dengan fallback nilai default
+SQLALCHEMY_DATABASE_URL = os.getenv(
+    "DATABASE_URL", 
+    "postgresql://kb_user:kb_password@postgres:5432/kb_database"
+)
+
+# Inisialisasi Engine SQLAlchemy
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+
+# Factory Session untuk menangani transaksi query
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Dependency Injection untuk FastAPI (Dependency Session)
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
