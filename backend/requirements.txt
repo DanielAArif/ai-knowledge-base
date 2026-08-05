@@ -12,3 +12,5 @@ python-multipart==0.0.9
 langchain==0.1.11
 chromadb==0.4.24
 tiktoken==0.6.0
+pypdf
+docx2txt
