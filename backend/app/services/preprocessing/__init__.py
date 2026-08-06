@@ -1,33 +1,53 @@
 """
 Package preprocessing untuk AI Knowledge Base (RAG pipeline).
 
-Alur:
-    extract_document() -> build_metadata() -> clean_document() -> chunk_document()
-    (extractor.py)        (metadata.py)       (cleaner.py)        (chunker.py, menyusul)
+Pipeline preprocessing:
 
-Semua tahap menerima & mengembalikan ProcessedDocument yang sama
-(lihat models.py), supaya tidak ada informasi yang hilang di tengah jalan.
+    extract_document()
+            ↓
+    build_metadata()
+            ↓
+    clean_document()
+            ↓
+    chunk_document()
 
-Contoh pemakaian dari pipeline.py:
+Setiap tahap menerima dan mengembalikan ProcessedDocument yang sama
+(lihat models.py), sehingga informasi dokumen tetap terjaga sepanjang
+pipeline.
 
-    from preprocessing import extract_document, build_metadata, clean_document
+Contoh penggunaan:
 
-    doc = extract_document(filepath)
-    doc = build_metadata(filepath, doc)
-    doc = clean_document(doc)
+    from preprocessing import preprocess_document
+
+    doc = preprocess_document(filepath)
+
+    if doc.success:
+        print(doc.metadata)
+        print(doc.num_segments)
+        print(doc.num_chunks)
 """
 
 from .cleaner import clean_document, clean_text
+from .chunker import chunk_document
 from .extractor import extract_document
 from .metadata import build_metadata
-from .models import DocumentMetadata, DocumentSegment, ProcessedDocument
+from .models import (
+    DocumentChunk,
+    DocumentMetadata,
+    DocumentSegment,
+    ProcessedDocument,
+)
+from .pipeline import preprocess_document
 
 __all__ = [
     "extract_document",
     "build_metadata",
     "clean_document",
     "clean_text",
+    "chunk_document",
+    "preprocess_document",
     "ProcessedDocument",
     "DocumentSegment",
+    "DocumentChunk",
     "DocumentMetadata",
 ]
