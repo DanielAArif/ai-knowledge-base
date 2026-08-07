@@ -1,37 +1,48 @@
 """
-Package embedding untuk AI Knowledge Base.
+Package embedding untuk AI Knowledge Base (RAG pipeline).
 
-Pipeline embedding:
+Alur:
 
     ProcessedDocument
-            ↓
-    embed_document()
-            ↓
+            │
+            ▼
+    DocumentEmbedder.embed()
+            │
+            ▼
     EmbeddedDocument
 
-Tahap ini bertugas mengubah setiap DocumentChunk hasil preprocessing
-menjadi embedding vector menggunakan SentenceTransformer.
+Modul ini bertugas mengubah setiap DocumentChunk menjadi vector embedding
+menggunakan SentenceTransformer.
 
-Output dari package ini adalah EmbeddedDocument yang siap disimpan ke
-vector database (mis. ChromaDB).
+Untuk penggunaan produksi, disarankan membuat satu instance
+DocumentEmbedder saat startup aplikasi dan menggunakannya kembali
+(reuse) untuk seluruh proses embedding.
 
-Contoh penggunaan:
+Contoh:
 
-    from app.services.embedding import embedding_pipeline
+    from app.services.preprocessing import preprocess_document
+    from app.services.embedding import DocumentEmbedder
 
-    embedded_doc = embedding_pipeline(processed_doc)
+    embedder = DocumentEmbedder()      # model di-load sekali
 
-    print(embedded_doc.num_chunks)
+    processed = preprocess_document(filepath)
+
+    if processed.success:
+        embedded = embedder.embed(processed)
+
+        if embedded.success:
+            print(embedded.num_chunks)
+
+Fungsi embed_document() tetap disediakan sebagai helper untuk
+testing atau penggunaan sederhana.
 """
 
 from .embedder import DocumentEmbedder, embed_document
 from .models import EmbeddedChunk, EmbeddedDocument
-from .pipeline import embedding_pipeline
 
 __all__ = [
     "DocumentEmbedder",
     "embed_document",
-    "embedding_pipeline",
     "EmbeddedChunk",
     "EmbeddedDocument",
 ]

@@ -3,62 +3,113 @@ embedder.py
 Tahap pertama embedding pipeline.
 
 Tanggung jawab modul ini:
+
 - Memuat embedding model.
-- Mengubah setiap DocumentChunk menjadi EmbeddedChunk.
+- Mengubah seluruh DocumentChunk sebuah dokumen menjadi EmbeddedChunk
+  lewat satu pemanggilan batch.
 - Menghasilkan EmbeddedDocument.
 
 Modul ini TIDAK bertugas:
+
 - Menyimpan ke ChromaDB.
 - Melakukan similarity search.
 - Berinteraksi dengan LLM.
 
+Catatan penting soal model E5 (intfloat/multilingual-e5-*):
+Model ini dilatih dengan konvensi prefix WAJIB - teks yang di-embed
+sebagai dokumen harus diberi prefix "passage: ", sedangkan query saat
+pencarian harus diberi prefix "query: ".
+
+Prefix ini hanya diterapkan otomatis jika model yang digunakan adalah
+keluarga E5. Model lain (mis. BAAI/bge-m3 atau all-MiniLM-L6-v2) tidak
+memerlukan prefix tersebut.
+
 Dependencies:
-    pip install sentence-transformers
+pip install sentence-transformers
 """
 
 from __future__ import annotations
 
 from sentence_transformers import SentenceTransformer
 
-from app.services.preprocessing.models import ProcessedDocument
+from ..preprocessing.models import ProcessedDocument
 from .models import EmbeddedChunk, EmbeddedDocument
 
+DEFAULT_MODEL = "intfloat/multilingual-e5-small"
 
-DEFAULT_MODEL = "BAAI/bge-m3"
+_E5_PASSAGE_PREFIX = "passage: "
 
 
 class DocumentEmbedder:
     """
     Embedder berbasis SentenceTransformer.
+
+    Instance sebaiknya dibuat sekali (mis. saat startup FastAPI),
+    lalu dipakai berulang kali agar model tidak perlu di-load ulang.
     """
 
-    def __init__(self, model_name: str = DEFAULT_MODEL):
+    def __init__(
+        self,
+        model_name: str = DEFAULT_MODEL,
+        batch_size: int = 32,
+    ):
+        self.model_name = model_name
+        self.batch_size = batch_size
         self.model = SentenceTransformer(model_name)
+
+    def _prepare_text(self, text: str) -> str:
+        """
+        Menyesuaikan format teks berdasarkan embedding model.
+
+        Model keluarga E5 membutuhkan prefix "passage:" untuk dokumen.
+        Model lain dikembalikan apa adanya.
+        """
+        if "e5" in self.model_name.lower():
+            return f"{_E5_PASSAGE_PREFIX}{text}"
+
+        return text
 
     def embed(self, doc: ProcessedDocument) -> EmbeddedDocument:
         """
         Mengubah seluruh DocumentChunk menjadi EmbeddedChunk.
+
+        Seluruh chunk diproses dalam satu batch agar lebih cepat daripada
+        melakukan encode satu per satu.
         """
 
         if not doc.success:
-            raise ValueError(doc.error)
-
-        embedded_chunks: list[EmbeddedChunk] = []
-
-        for chunk in doc.chunks:
-            embedding = self.model.encode(
-                chunk.text,
-                normalize_embeddings=True,
+            return EmbeddedDocument(
+                metadata=doc.metadata,
+                error=doc.error,
             )
 
-            embedded_chunks.append(
-                EmbeddedChunk(
-                    chunk_id=chunk.chunk_id,
-                    segment_index=chunk.segment_index,
-                    text=chunk.text,
-                    embedding=embedding.tolist(),
-                )
+        if not doc.chunks:
+            return EmbeddedDocument(
+                metadata=doc.metadata,
+                error="ProcessedDocument contains no chunks.",
             )
+
+        texts = [
+            self._prepare_text(chunk.text)
+            for chunk in doc.chunks
+        ]
+
+        vectors = self.model.encode(
+            texts,
+            batch_size=self.batch_size,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+
+        embedded_chunks = [
+            EmbeddedChunk(
+                chunk_id=chunk.chunk_id,
+                segment_index=chunk.segment_index,
+                text=chunk.text,
+                embedding=vector.tolist(),
+            )
+            for chunk, vector in zip(doc.chunks, vectors)
+        ]
 
         return EmbeddedDocument(
             metadata=doc.metadata,
@@ -68,21 +119,18 @@ class DocumentEmbedder:
 
 def embed_document(
     doc: ProcessedDocument,
-    model_name: str = DEFAULT_MODEL,
+    embedder: DocumentEmbedder | None = None,
 ) -> EmbeddedDocument:
     """
-    Entry point utama.
+    Entry point untuk penggunaan sederhana.
 
-    Contoh:
-
-        processed = preprocess_document(filepath)
-
-        embedded = embed_document(processed)
-
-        print(embedded.num_chunks)
+    Untuk batch processing, disarankan membuat satu instance
+    DocumentEmbedder dan memakainya berulang kali agar model tidak
+    di-load ulang.
     """
 
-    embedder = DocumentEmbedder(model_name)
+    if embedder is None:
+        embedder = DocumentEmbedder()
 
     return embedder.embed(doc)
 
@@ -90,5 +138,5 @@ def embed_document(
 if __name__ == "__main__":
     print(
         "Embedder adalah bagian dari embedding pipeline.\n"
-        "Jalankan melalui pipeline.py untuk pengujian."
+        "Jalankan melalui pipeline embedding untuk pengujian."
     )
