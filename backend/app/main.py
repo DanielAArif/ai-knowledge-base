@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from app.routers import auth, category, document
+from app.routers import auth, category, document, admin_users
 
 # Import fungsi get_db dari modul database yang baru dibuat
 from app.database import get_db
@@ -14,6 +14,7 @@ app = FastAPI(
 app.include_router(auth.router)
 app.include_router(category.router)
 app.include_router(document.router)
+app.include_router(admin_users.router)
 
 @app.get("/")
 def read_root():

@@ -8,6 +8,8 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
+from app.models.user import UserRole
+
 from app.database import get_db
 from app.models import User
 
@@ -77,3 +79,17 @@ def get_current_user(
         raise credentials_exception
 
     return user
+
+# =====================================================================
+# DEPENDENCY UNTUK MEMVERIFIKASI HAK AKSES ADMIN
+# =====================================================================
+def get_current_admin_user(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """Memastikan user yang sedang login memiliki role Admin."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Akses ditolak. Fitur ini hanya dapat diakses oleh Admin."
+        )
+    return current_user
