@@ -4,7 +4,7 @@ Tahap pertama embedding pipeline.
 
 Tanggung jawab modul ini:
 
-- Memuat embedding model.
+- Memuat embedding model menggunakan FastEmbed (ONNX Runtime, tanpa PyTorch).
 - Mengubah seluruh DocumentChunk sebuah dokumen menjadi EmbeddedChunk
   lewat satu pemanggilan batch.
 - Menghasilkan EmbeddedDocument.
@@ -21,28 +21,27 @@ sebagai dokumen harus diberi prefix "passage: ", sedangkan query saat
 pencarian harus diberi prefix "query: ".
 
 Prefix ini hanya diterapkan otomatis jika model yang digunakan adalah
-keluarga E5. Model lain (mis. BAAI/bge-m3 atau all-MiniLM-L6-v2) tidak
-memerlukan prefix tersebut.
+keluarga E5. Model lain (mis. BAAI/bge-m3) tidak memerlukan prefix tersebut.
 
 Dependencies:
-pip install sentence-transformers
+pip install fastembed
 """
 
 from __future__ import annotations
 
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 
 from ..preprocessing.models import ProcessedDocument
 from .models import EmbeddedChunk, EmbeddedDocument
 
-DEFAULT_MODEL = "intfloat/multilingual-e5-small"
+DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 _E5_PASSAGE_PREFIX = "passage: "
 
 
 class DocumentEmbedder:
     """
-    Embedder berbasis SentenceTransformer.
+    Embedder berbasis FastEmbed (ONNX Runtime).
 
     Instance sebaiknya dibuat sekali (mis. saat startup FastAPI),
     lalu dipakai berulang kali agar model tidak perlu di-load ulang.
@@ -55,7 +54,8 @@ class DocumentEmbedder:
     ):
         self.model_name = model_name
         self.batch_size = batch_size
-        self.model = SentenceTransformer(model_name)
+        # FastEmbed memuat model ONNX secara lokal tanpa PyTorch
+        self.model = TextEmbedding(model_name=model_name)
 
     def _prepare_text(self, text: str) -> str:
         """
@@ -94,11 +94,11 @@ class DocumentEmbedder:
             for chunk in doc.chunks
         ]
 
-        vectors = self.model.encode(
+        # FastEmbed.embed() mengembalikan generator berisi numpy arrays.
+        # Konversi generator ke list[list[float]] dengan .tolist().
+        vectors_generator = self.model.embed(
             texts,
             batch_size=self.batch_size,
-            normalize_embeddings=True,
-            show_progress_bar=False,
         )
 
         embedded_chunks = [
@@ -108,7 +108,7 @@ class DocumentEmbedder:
                 text=chunk.text,
                 embedding=vector.tolist(),
             )
-            for chunk, vector in zip(doc.chunks, vectors)
+            for chunk, vector in zip(doc.chunks, vectors_generator)
         ]
 
         return EmbeddedDocument(

@@ -7,7 +7,7 @@ Alur:
     ProcessedDocument
             │
             ▼
-    DocumentEmbedder.embed()
+    DocumentEmbedder.embed()  <-- Menggunakan FastEmbed (ONNX Runtime)
             │
             ▼
     EmbeddedDocument
@@ -25,7 +25,6 @@ Tahap selanjutnya:
 from __future__ import annotations
 
 from ..preprocessing.models import ProcessedDocument
-
 from .embedder import DocumentEmbedder, embed_document
 from .models import EmbeddedDocument
 
