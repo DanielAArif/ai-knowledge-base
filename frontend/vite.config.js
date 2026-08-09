@@ -5,6 +5,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    host: true
+    host: true,
+    watch: {
+      usePolling: true, // 👈 AKTIFKAN INI agar Docker membaca perubahan kode
+    },
   }
 })
