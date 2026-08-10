@@ -25,11 +25,18 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const response = await api.post('/auth/login', { email, password });
+    
+    // Ambil access_token dan data user dari response FastAPI
     const { access_token, user: userData } = response.data;
 
+    // Simpan ke localStorage
     localStorage.setItem('token', access_token);
     localStorage.setItem('user', JSON.stringify(userData));
+    
+    // Update state React
     setUser(userData);
+
+    // KEMBALIKAN userData AGAR BISA DIBACA DI Login.jsx
     return userData;
   };
 
