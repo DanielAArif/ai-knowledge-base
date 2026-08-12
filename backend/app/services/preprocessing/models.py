@@ -68,15 +68,24 @@ class ProcessedDocument:
     Objek utama yang mengalir sepanjang pipeline preprocessing.
     """
 
-    full_text: str = ""
+    # Identitas dokumen
+    document_id: str = ""
 
     # Hasil extractor
-    segments: list[DocumentSegment] = field(default_factory=list)
+    full_text: str = ""
+
+    segments: list[DocumentSegment] = field(
+        default_factory=list
+    )
 
     # Hasil chunker
-    chunks: list[DocumentChunk] = field(default_factory=list)
+    chunks: list[DocumentChunk] = field(
+        default_factory=list
+    )
 
-    metadata: DocumentMetadata = field(default_factory=DocumentMetadata)
+    metadata: DocumentMetadata = field(
+        default_factory=DocumentMetadata
+    )
 
     error: Optional[str] = None
 
@@ -97,12 +106,6 @@ class ProcessedDocument:
         full_text: str,
         segments: list[DocumentSegment],
     ) -> "ProcessedDocument":
-        """
-        Dipakai oleh cleaner.py.
-
-        Metadata dan chunks tetap dipertahankan.
-        """
-
         return replace(
             self,
             full_text=full_text,
@@ -113,10 +116,6 @@ class ProcessedDocument:
         self,
         chunks: list[DocumentChunk],
     ) -> "ProcessedDocument":
-        """
-        Dipakai oleh chunker.py.
-        """
-
         return replace(
             self,
             chunks=chunks,
@@ -126,10 +125,6 @@ class ProcessedDocument:
         self,
         metadata: DocumentMetadata,
     ) -> "ProcessedDocument":
-        """
-        Dipakai oleh metadata.py.
-        """
-
         return replace(
             self,
             metadata=metadata,

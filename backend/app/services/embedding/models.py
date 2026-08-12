@@ -5,6 +5,14 @@ Struktur data untuk embedding pipeline.
 Mengikuti pola yang sama dengan preprocessing/models.py: field `error`
 dipakai untuk mengomunikasikan kegagalan lewat return value (bukan
 exception), supaya konsisten dengan gaya short-circuit di pipeline.py.
+
+Alur:
+
+    ProcessedDocument
+            ↓
+    EmbeddedDocument
+            ↓
+       Vector Store
 """
 
 from __future__ import annotations
@@ -18,9 +26,10 @@ from ..preprocessing.models import DocumentMetadata
 @dataclass
 class EmbeddedChunk:
     """
-    Satu DocumentChunk yang sudah punya vector embedding, siap disimpan
-    ke vector database.
+    Satu DocumentChunk yang sudah memiliki vector embedding,
+    siap disimpan ke vector database.
     """
+
     chunk_id: int
     segment_index: int
     text: str
@@ -30,10 +39,19 @@ class EmbeddedChunk:
 @dataclass
 class EmbeddedDocument:
     """
-    Kumpulan EmbeddedChunk untuk satu dokumen, plus metadata dokumen asal.
+    Kumpulan EmbeddedChunk untuk satu dokumen.
+
+    `document_id` berasal dari ProcessedDocument dan diteruskan
+    tanpa dibuat ulang oleh embedding layer.
     """
-    metadata: DocumentMetadata = field(default_factory=DocumentMetadata)
-    embedded_chunks: list[EmbeddedChunk] = field(default_factory=list)
+
+    document_id: str
+    metadata: DocumentMetadata = field(
+        default_factory=DocumentMetadata
+    )
+    embedded_chunks: list[EmbeddedChunk] = field(
+        default_factory=list
+    )
     error: Optional[str] = None
 
     @property
