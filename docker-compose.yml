@@ -44,6 +44,10 @@ services:
       # ChromaDB
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
+
+      # Gemini
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+
     volumes:
       - ./backend:/app
       - ./backend/uploads:/app/uploads
