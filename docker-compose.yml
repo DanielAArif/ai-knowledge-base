@@ -44,7 +44,8 @@ services:
       # ChromaDB
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
-
+      - ANONYMIZED_TELEMETRY=False
+      
       # Gemini
       - GEMINI_API_KEY=${GEMINI_API_KEY}
 

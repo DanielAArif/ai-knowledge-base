@@ -35,7 +35,10 @@ from .metadata import build_metadata
 from .models import ProcessedDocument
 
 
-def preprocess_document(filepath: str) -> ProcessedDocument:
+def preprocess_document(
+    filepath: str,
+    document_id: str = "",
+) -> ProcessedDocument:
     """
     Menjalankan seluruh pipeline preprocessing.
 
@@ -58,6 +61,7 @@ def preprocess_document(filepath: str) -> ProcessedDocument:
     if not doc.success:
         return doc
 
+    doc.document_id = document_id
     doc = build_metadata(filepath, doc)
 
     if not doc.success:
