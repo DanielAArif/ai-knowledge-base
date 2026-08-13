@@ -1,31 +1,28 @@
 """
 embedder.py
-Tahap pertama embedding pipeline.
+
+Tahap embedding pipeline menggunakan FastEmbed.
 
 Tanggung jawab modul ini:
-
-- Memuat embedding model menggunakan FastEmbed (ONNX Runtime, tanpa PyTorch).
-- Mengubah seluruh DocumentChunk sebuah dokumen menjadi EmbeddedChunk
-  lewat satu pemanggilan batch.
+- Memuat embedding model menggunakan FastEmbed.
+- Mengubah DocumentChunk menjadi EmbeddedChunk.
+- Menghasilkan embedding untuk user query.
 - Menghasilkan EmbeddedDocument.
-- Meneruskan document_id dari preprocessing ke embedding.
 
 Modul ini TIDAK bertugas:
-
-- Menyimpan ke ChromaDB.
+- Menyimpan embedding ke ChromaDB.
 - Melakukan similarity search.
 - Berinteraksi dengan LLM.
 
-Catatan penting soal model E5 (intfloat/multilingual-e5-*):
-Model ini menggunakan konvensi prefix:
-- "passage: " untuk dokumen.
-- "query: " untuk query pencarian.
+Catatan:
+Model default:
+    sentence-transformers/all-MiniLM-L6-v2
 
-Prefix hanya diterapkan otomatis jika model yang digunakan adalah
-keluarga E5.
+Model ini tidak membutuhkan prefix "passage:" atau "query:".
 
-Dependencies:
-pip install fastembed
+Untuk model E5:
+    document -> "passage: ..."
+    query    -> "query: ..."
 """
 
 from __future__ import annotations
@@ -39,14 +36,15 @@ from .models import EmbeddedChunk, EmbeddedDocument
 DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 _E5_PASSAGE_PREFIX = "passage: "
+_E5_QUERY_PREFIX = "query: "
 
 
 class DocumentEmbedder:
     """
-    Embedder berbasis FastEmbed (ONNX Runtime).
+    Embedder berbasis FastEmbed.
 
-    Instance sebaiknya dibuat sekali, misalnya saat startup FastAPI,
-    lalu digunakan berulang kali agar model tidak di-load ulang.
+    Instance sebaiknya dibuat sekali dan digunakan kembali
+    agar model tidak perlu dimuat ulang.
     """
 
     def __init__(
@@ -57,26 +55,46 @@ class DocumentEmbedder:
         self.model_name = model_name
         self.batch_size = batch_size
 
-        # FastEmbed menggunakan ONNX Runtime sehingga tidak
-        # membutuhkan PyTorch.
         self.model = TextEmbedding(
             model_name=model_name,
         )
 
+    def _is_e5_model(self) -> bool:
+        """
+        Mengecek apakah model yang digunakan merupakan model E5.
+        """
+
+        return "e5" in self.model_name.lower()
+
     def _prepare_text(self, text: str) -> str:
         """
-        Menyesuaikan format teks berdasarkan embedding model.
+        Menyiapkan teks dokumen sebelum embedding.
 
-        Model keluarga E5 membutuhkan prefix "passage:" untuk
-        teks dokumen.
+        Model E5 membutuhkan prefix:
+            passage: <text>
 
-        Model lain dikembalikan tanpa perubahan.
+        Model lain dikembalikan apa adanya.
         """
 
-        if "e5" in self.model_name.lower():
+        if self._is_e5_model():
             return f"{_E5_PASSAGE_PREFIX}{text}"
 
         return text
+
+    def _prepare_query(self, query: str) -> str:
+        """
+        Menyiapkan query sebelum embedding.
+
+        Model E5 membutuhkan prefix:
+            query: <query>
+
+        Model lain dikembalikan apa adanya.
+        """
+
+        if self._is_e5_model():
+            return f"{_E5_QUERY_PREFIX}{query}"
+
+        return query
 
     def embed(
         self,
@@ -85,12 +103,22 @@ class DocumentEmbedder:
         """
         Mengubah seluruh DocumentChunk menjadi EmbeddedChunk.
 
-        Seluruh chunk diproses dalam satu batch.
+        Alur:
+
+            ProcessedDocument
+                    ↓
+                DocumentChunk
+                    ↓
+                FastEmbed
+                    ↓
+                EmbeddedChunk
+                    ↓
+                EmbeddedDocument
         """
 
-        # ---------------------------------------------------------
-        # Preprocessing gagal
-        # ---------------------------------------------------------
+        # ----------------------------------------------------------
+        # 1. Validasi preprocessing
+        # ----------------------------------------------------------
 
         if not doc.success:
             return EmbeddedDocument(
@@ -99,9 +127,9 @@ class DocumentEmbedder:
                 error=doc.error,
             )
 
-        # ---------------------------------------------------------
-        # Tidak ada chunk
-        # ---------------------------------------------------------
+        # ----------------------------------------------------------
+        # 2. Pastikan terdapat chunks
+        # ----------------------------------------------------------
 
         if not doc.chunks:
             return EmbeddedDocument(
@@ -110,51 +138,27 @@ class DocumentEmbedder:
                 error="ProcessedDocument contains no chunks.",
             )
 
-        # ---------------------------------------------------------
-        # Prepare texts
-        # ---------------------------------------------------------
+        # ----------------------------------------------------------
+        # 3. Siapkan teks
+        # ----------------------------------------------------------
 
         texts = [
             self._prepare_text(chunk.text)
             for chunk in doc.chunks
         ]
 
-        # ---------------------------------------------------------
-        # Generate embeddings
-        # ---------------------------------------------------------
+        # ----------------------------------------------------------
+        # 4. Generate embedding secara batch
+        # ----------------------------------------------------------
 
-        try:
-            vectors_generator = self.model.embed(
-                texts,
-                batch_size=self.batch_size,
-            )
+        vectors_generator = self.model.embed(
+            texts,
+            batch_size=self.batch_size,
+        )
 
-            # FastEmbed mengembalikan generator berisi numpy arrays.
-            vectors = list(vectors_generator)
-
-        except Exception as exc:
-            return EmbeddedDocument(
-                document_id=doc.document_id,
-                metadata=doc.metadata,
-                error=f"Gagal membuat embedding: {exc}",
-            )
-
-        # ---------------------------------------------------------
-        # Validate result
-        # ---------------------------------------------------------
-
-        if len(vectors) != len(doc.chunks):
-            return EmbeddedDocument(
-                document_id=doc.document_id,
-                metadata=doc.metadata,
-                error=(
-                    "Jumlah embedding tidak sesuai dengan jumlah chunk."
-                ),
-            )
-
-        # ---------------------------------------------------------
-        # Build EmbeddedChunk
-        # ---------------------------------------------------------
+        # ----------------------------------------------------------
+        # 5. Gabungkan chunk dengan embedding
+        # ----------------------------------------------------------
 
         embedded_chunks = [
             EmbeddedChunk(
@@ -165,13 +169,13 @@ class DocumentEmbedder:
             )
             for chunk, vector in zip(
                 doc.chunks,
-                vectors,
+                vectors_generator,
             )
         ]
 
-        # ---------------------------------------------------------
-        # Return EmbeddedDocument
-        # ---------------------------------------------------------
+        # ----------------------------------------------------------
+        # 6. Return EmbeddedDocument
+        # ----------------------------------------------------------
 
         return EmbeddedDocument(
             document_id=doc.document_id,
@@ -179,17 +183,74 @@ class DocumentEmbedder:
             embedded_chunks=embedded_chunks,
         )
 
+    def embed_query(
+        self,
+        query: str,
+    ) -> list[float]:
+        """
+        Mengubah user query menjadi embedding vector.
+
+        Contoh:
+
+            query = "Apa saja fitur AI Knowledge Base?"
+
+        Return:
+
+            list[float]
+
+        Embedding yang dihasilkan nantinya digunakan oleh
+        VectorStore untuk melakukan similarity search.
+        """
+
+        # ----------------------------------------------------------
+        # 1. Validasi query
+        # ----------------------------------------------------------
+
+        if not query or not query.strip():
+            raise ValueError(
+                "Query tidak boleh kosong."
+            )
+
+        # ----------------------------------------------------------
+        # 2. Siapkan query
+        # ----------------------------------------------------------
+
+        prepared_query = self._prepare_query(
+            query.strip()
+        )
+
+        # ----------------------------------------------------------
+        # 3. Generate query embedding
+        # ----------------------------------------------------------
+
+        vectors_generator = self.model.embed(
+            [prepared_query],
+        )
+
+        # ----------------------------------------------------------
+        # 4. Ambil vector pertama
+        # ----------------------------------------------------------
+
+        vector = next(iter(vectors_generator))
+
+        # ----------------------------------------------------------
+        # 5. Konversi numpy array → list[float]
+        # ----------------------------------------------------------
+
+        return vector.tolist()
+
 
 def embed_document(
     doc: ProcessedDocument,
     embedder: DocumentEmbedder | None = None,
 ) -> EmbeddedDocument:
     """
-    Entry point untuk penggunaan sederhana.
+    Entry point sederhana untuk embedding dokumen.
 
-    Untuk batch processing, disarankan membuat satu instance
-    DocumentEmbedder dan menggunakannya berulang kali agar model
-    tidak di-load ulang.
+    Jika embedder tidak diberikan, instance baru akan dibuat.
+
+    Untuk batch processing, sebaiknya gunakan satu instance
+    DocumentEmbedder agar model tidak dimuat ulang.
     """
 
     if embedder is None:
@@ -201,5 +262,6 @@ def embed_document(
 if __name__ == "__main__":
     print(
         "Embedder adalah bagian dari embedding pipeline.\n"
-        "Jalankan melalui pipeline embedding untuk pengujian."
+        "Gunakan DocumentEmbedder.embed() untuk dokumen atau\n"
+        "DocumentEmbedder.embed_query() untuk query."
     )
