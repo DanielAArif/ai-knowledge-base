@@ -32,6 +32,12 @@ class RAGResponse:
     question: str
     answer: str = ""
     sources: list[RAGSource] = field(default_factory=list)
+
+    # Token usage dari LLM, untuk monitoring biaya.
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
     error: Optional[str] = None
 
     @property

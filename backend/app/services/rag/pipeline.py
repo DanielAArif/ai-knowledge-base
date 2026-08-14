@@ -34,6 +34,11 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TOP_K = 3
 
+NO_CONTEXT_ANSWER = (
+    "Maaf, saya tidak menemukan informasi yang relevan pada "
+    "dokumen yang tersedia untuk menjawab pertanyaan ini."
+)
+
 
 class RAGPipeline:
     """
@@ -63,9 +68,18 @@ class RAGPipeline:
     def answer(
         self,
         question: str,
+        top_k: int | None = None,
     ) -> RAGResponse:
         """
         Menjawab pertanyaan menggunakan RAG.
+
+        Parameters
+        ----------
+        question:
+            Pertanyaan dari pengguna.
+        top_k:
+            Override jumlah chunk yang diambil untuk request ini.
+            Jika None, memakai self.top_k (default instance).
         """
 
         if not question or not question.strip():
@@ -75,6 +89,14 @@ class RAGPipeline:
             )
 
         question = question.strip()
+
+        effective_top_k = top_k if top_k is not None else self.top_k
+
+        if effective_top_k <= 0:
+            return RAGResponse(
+                question=question,
+                error="top_k harus lebih besar dari 0.",
+            )
 
         try:
             # --------------------------------------------------
@@ -97,7 +119,7 @@ class RAGPipeline:
 
             search_results = self.vector_store.search(
                 query_embedding=query_embedding,
-                n_results=self.top_k,
+                n_results=effective_top_k,
             )
 
             if not search_results.success:
@@ -107,9 +129,22 @@ class RAGPipeline:
                 )
 
             if not search_results.results:
+                # Bukan kegagalan sistem -- ini hasil pencarian yang
+                # valid, cuma kebetulan tidak ada dokumen yang cocok.
+                # Dianggap SUKSES (answer terisi, error tetap None)
+                # supaya endpoint API mengembalikan 200, bukan error.
+                # LLM sengaja TIDAK dipanggil di sini untuk menghemat
+                # biaya API pada query yang jelas tidak punya konteks.
+                logger.info(
+                    "RAG: tidak ada dokumen relevan untuk "
+                    "question='%s'.",
+                    question,
+                )
+
                 return RAGResponse(
                     question=question,
-                    error="Tidak ditemukan context yang relevan.",
+                    answer=NO_CONTEXT_ANSWER,
+                    sources=[],
                 )
 
             # --------------------------------------------------
@@ -164,15 +199,19 @@ class RAGPipeline:
             # --------------------------------------------------
 
             logger.info(
-                "RAG berhasil: question='%s', sources=%d.",
+                "RAG berhasil: question='%s', sources=%d, tokens=%d.",
                 question,
                 len(sources),
+                llm_response.total_tokens,
             )
 
             return RAGResponse(
                 question=question,
                 answer=llm_response.answer,
                 sources=sources,
+                prompt_tokens=llm_response.prompt_tokens,
+                completion_tokens=llm_response.completion_tokens,
+                total_tokens=llm_response.total_tokens,
             )
 
         except Exception as exc:
