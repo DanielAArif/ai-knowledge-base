@@ -17,10 +17,23 @@ const Login = () => {
     setLoading(true);
 
     try {
-      await login(email, password);
-      // Redirect ke halaman dashboard/home setelah login berhasil
-      navigate('/dashboard');
+      const userData = await login(email, password);
+
+      // Konversi role ke huruf kecil untuk konsistensi dengan Database ("admin" / "user")
+      const roleRaw = typeof userData?.role === 'string'
+        ? userData.role
+        : userData?.role?.value;
+      const userRole = (roleRaw || '').toLowerCase();
+
+      console.log("LOGIN SUCCESS!", { userData, userRole });
+
+      if (userRole === 'admin') {
+        navigate('/admin/dashboard', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
     } catch (err) {
+      console.error("Login Error:", err);
       const errorMsg =
         err.response?.data?.detail ||
         'Email atau kata sandi salah. Silakan coba lagi.';

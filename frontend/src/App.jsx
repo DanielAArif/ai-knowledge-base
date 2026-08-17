@@ -4,22 +4,18 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 
-// Komponen Proteksi Route (Hanya user yang sudah login yang bisa akses)
+// Import Admin Components
+import AdminProtectedRoute from './components/AdminProtectedRoute';
+import AdminLayout from './components/AdminLayout';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import UserManagement from './pages/admin/UserManagement';
+import CategoryManagement from './pages/admin/CategoryManagement';
+import DocumentManagement from './pages/admin/DocumentManagement';
+
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100">
-        <p className="text-slate-500">Memuat...</p>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
+  if (loading) return <div className="min-h-screen flex items-center justify-center">Memuat...</div>;
+  if (!user) return <Navigate to="/login" replace />;
   return children;
 };
 
@@ -32,7 +28,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Protected Routes */}
+          {/* User Protected Routes */}
           <Route
             path="/dashboard"
             element={
@@ -42,7 +38,23 @@ function App() {
             }
           />
 
-          {/* Default Route */}
+          {/* Admin Protected Routes */}
+          <Route
+            path="/admin"
+            element={
+              <AdminProtectedRoute>
+                <AdminLayout />
+              </AdminProtectedRoute>
+            }
+          >
+            <Route index element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="dashboard" element={<AdminDashboard />} />
+            <Route path="users" element={<UserManagement />} />
+            <Route path="categories" element={<CategoryManagement />} />
+            <Route path="documents" element={<DocumentManagement />} />
+          </Route>
+
+          {/* Default Redirect */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </Router>
