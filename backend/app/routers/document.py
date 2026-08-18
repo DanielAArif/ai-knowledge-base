@@ -395,6 +395,7 @@ def upload_document(
 def get_user_documents(
     skip: int = 0,
     limit: int = 100,
+    search: Optional[str] = None,
     category_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -420,6 +421,9 @@ def get_user_documents(
     ).filter(
         Document.user_id == current_user.id
     )
+
+    if search:
+        query = query.filter(Document.title.ilike(f"%{search}%"))
 
     if category_id is not None:
         query = query.filter(

@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from app.routers import auth, category, document, admin_users
+from app.routers import auth, category, document, admin_users, chat
 from app.routers import query
 
 # Import fungsi get_db dari modul database yang baru dibuat
@@ -25,6 +25,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(category.router)
 app.include_router(document.router)
+app.include_router(chat.router)
 app.include_router(admin_users.router)
 app.include_router(query.router)
 
