@@ -69,6 +69,7 @@ class RAGPipeline:
         self,
         question: str,
         top_k: int | None = None,
+        document_id: int | None = None,
     ) -> RAGResponse:
         """
         Menjawab pertanyaan menggunakan RAG.
@@ -120,6 +121,7 @@ class RAGPipeline:
             search_results = self.vector_store.search(
                 query_embedding=query_embedding,
                 n_results=effective_top_k,
+                document_id=document_id,
             )
 
             if not search_results.success:

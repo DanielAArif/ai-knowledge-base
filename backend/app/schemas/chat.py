@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, ConfigDict, Field
 
 # ==========================================
 # CHAT MESSAGE SCHEMAS
@@ -11,13 +11,15 @@ class ChatMessageBase(BaseModel):
     content: str
     metadata: Optional[Dict[str, Any]] = Field(default=None, alias="msg_metadata")
 
-    model_config = {
-        "from_attributes": True,
-        "populate_by_name": True  # Mengizinkan pemanggilan via nama 'metadata' maupun 'msg_metadata'
-    }
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True  # Mengizinkan penggunaan 'metadata' maupun 'msg_metadata'
+    )
+
 
 class ChatMessageCreate(BaseModel):
     content: str  # User hanya mengirim content
+
 
 class ChatMessageResponse(ChatMessageBase):
     id: int
@@ -30,11 +32,17 @@ class ChatMessageResponse(ChatMessageBase):
 # ==========================================
 
 class ChatSessionBase(BaseModel):
-    title: Optional[str] = "New Chat"
-    document_id: Optional[int] = None  # None = Global Chatbot
+    title: Optional[str] = Field(default="New Chat", examples=["New Chat"])
+    document_id: Optional[int] = Field(
+        default=None, 
+        description="ID Dokumen spesifik. Biarkan null jika ingin Global Chatbot.",
+        examples=[1]
+    )
+
 
 class ChatSessionCreate(ChatSessionBase):
     pass
+
 
 class ChatSessionResponse(ChatSessionBase):
     id: int
@@ -43,4 +51,4 @@ class ChatSessionResponse(ChatSessionBase):
     updated_at: Optional[datetime] = None
     messages: List[ChatMessageResponse] = []
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)

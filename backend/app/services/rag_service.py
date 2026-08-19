@@ -1,62 +1,60 @@
-# INI ADALAH FILE MOCK UNTUK SIMULASI RAG (Retrieval-Augmented Generation) UNTUK PENGUJIAN TANPA MEMANGGIL LLM SEBENARNYA.
-
 # app/services/rag_service.py
 import logging
 from typing import Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session
-from app.models.document import Document
+
+# Import dependency RAGPipeline milik rekan Anda
+from app.services.rag.dependencies import RAGPipelineInitError, get_rag_pipeline
 
 logger = logging.getLogger(__name__)
+
 
 async def generate_rag_response(
     prompt: str,
     document_id: Optional[int] = None,
     db: Optional[Session] = None
 ) -> Tuple[str, Dict[str, Any]]:
-    """
-    Simulasi/Mock generator jawaban AI RAG.
     
-    Returns:
-        Tuple[str, Dict[str, Any]]: (Jawaban AI, Metadata / Source Documents)
-    """
-    logger.info("Menerima prompt untuk Mock RAG: '%s' (document_id=%s)", prompt, document_id)
+    logger.info("Memproses prompt via RAGPipeline: '%s' (document_id=%s)", prompt, document_id)
 
-    # Mode 1: Chat terisolasi pada 1 Dokumen spesifik
-    if document_id:
-        doc_title = "Dokumen Spesifik"
-        if db:
-            doc = db.get(Document, document_id)
-            if doc:
-                doc_title = doc.title
+    try:
+        pipeline = get_rag_pipeline()
 
-        answer = (
-            f"[MOCK AI - DOKUMEN SPEKSIFIK]\n\n"
-            f"Berdasarkan dokumen '{doc_title}', berikut informasi terkait pertanyaan Anda ('{prompt}'):\n"
-            f"1. Dokumen ini memuat informasi relevan pada Bagian 2.\n"
-            f"2. Konten merujuk pada ketentuan yang berlaku dalam file tersebut."
+        # Oper document_id ke pipeline.answer
+        rag_response = pipeline.answer(
+            question=prompt,
+            top_k=3,
+            document_id=document_id  # <--- Teruskan ke pipeline!
         )
-        sources = {
-            "mode": "document_specific",
+
+        if not rag_response.success:
+            return (
+                f"Maaf, terjadi kesalahan: {rag_response.error}",
+                {"error": rag_response.error}
+            )
+
+        sources_metadata = {
+            "mode": "document_specific" if document_id else "global",
             "document_id": document_id,
+            "tokens": {
+                "prompt_tokens": rag_response.prompt_tokens,
+                "completion_tokens": rag_response.completion_tokens,
+                "total_tokens": rag_response.total_tokens,
+            },
             "source_documents": [
-                {"title": doc_title, "page": 1, "score": 0.92},
-                {"title": doc_title, "page": 3, "score": 0.85}
+                {
+                    "chunk_id": s.chunk_id,
+                    "document_id": s.document_id,
+                    "text": s.text,
+                    "distance": s.distance,
+                    "metadata": s.metadata,
+                }
+                for s in (rag_response.sources or [])
             ]
         }
 
-    # Mode 2: Chatbot Global (Menjelajah seluruh Knowledge Base)
-    else:
-        answer = (
-            f"[MOCK AI - GLOBAL KNOWLEDGE BASE]\n\n"
-            f"Menjawab pertanyaan Anda tentang '{prompt}':\n"
-            f"Sistem telah menganalisis basis pengetahuan global dan menemukan beberapa rujukan terkait kueri ini."
-        )
-        sources = {
-            "mode": "global",
-            "source_documents": [
-                {"title": "SOP_Perusahaan.pdf", "page": 4, "score": 0.89},
-                {"title": "Panduan_Karyawan.docx", "page": 12, "score": 0.78}
-            ]
-        }
+        return rag_response.answer, sources_metadata
 
-    return answer, sources
+    except Exception as exc:
+        logger.exception("Error RAG Service: %s", exc)
+        return ("Terjadi kesalahan internal pada sistem AI.", {"error": str(exc)})

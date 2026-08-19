@@ -170,6 +170,7 @@ class VectorStore:
         self,
         query_embedding: list[float],
         n_results: int = 5,
+        document_id: str | int | None = None,
     ) -> SearchResults:
         """
         Melakukan similarity search menggunakan embedding query.
@@ -199,9 +200,15 @@ class VectorStore:
             )
 
         try:
+            # Buat filter metadata jika document_id diberikan
+            where_filter = None
+            if document_id is not None and str(document_id).strip():
+                where_filter = {"document_id": str(document_id)}
+
             result = self.collection.query(
                 query_embeddings=[query_embedding],
                 n_results=n_results,
+                where=where_filter,  # Filter ChromaDB berdasarkan metadata document_id
                 include=[
                     "documents",
                     "metadatas",
