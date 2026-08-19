@@ -27,3 +27,4 @@ class Document(Base):
     # Relationships
     owner = relationship("User", back_populates="documents")
     category = relationship("Category", back_populates="documents")
+    chat_sessions = relationship("ChatSession", back_populates="document", cascade="all, delete-orphan")
