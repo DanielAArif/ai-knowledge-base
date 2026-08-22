@@ -42,8 +42,7 @@ const UserManagement = () => {
             <tr>
               <th className="p-4">Nama Lengkap</th>
               <th className="p-4">Email</th>
-              <th className="p-4">Role Saat Ini</th>
-              <th className="p-4">Aksi Role</th>
+              <th className="p-4">Role</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -66,16 +65,6 @@ const UserManagement = () => {
                     }`}>
                       {u.role}
                     </span>
-                  </td>
-                  <td className="p-4">
-                    <select
-                      value={u.role}
-                      onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                      className="border border-slate-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
-                    >
-                      <option value="USER">USER</option>
-                      <option value="ADMIN">ADMIN</option>
-                    </select>
                   </td>
                 </tr>
               ))

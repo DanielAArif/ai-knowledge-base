@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import AdminProtectedRoute from './components/AdminProtectedRoute';
 import AdminLayout from './components/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminChatbot from './pages/admin/AdminChatbot';
 import UserManagement from './pages/admin/UserManagement';
 import CategoryManagement from './pages/admin/CategoryManagement';
 import DocumentManagement from './pages/admin/DocumentManagement';
@@ -49,6 +50,7 @@ function App() {
           >
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="dashboard" element={<AdminDashboard />} />
+            <Route path="/admin/chatbot" element={<AdminChatbot />} />
             <Route path="users" element={<UserManagement />} />
             <Route path="categories" element={<CategoryManagement />} />
             <Route path="documents" element={<DocumentManagement />} />

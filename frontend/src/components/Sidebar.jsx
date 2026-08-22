@@ -254,33 +254,35 @@ const Sidebar = ({
       </div>
 
       {/* Footer Sidebar: User Profile & Logout */}
-      <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-full bg-slate-700 text-white flex items-center justify-center font-bold text-xs uppercase flex-shrink-0">
-            {user?.email?.slice(0, 2) || 'US'}
+      {user?.role !== 'admin' && (
+        <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-slate-700 text-white flex items-center justify-center font-bold text-xs uppercase flex-shrink-0">
+              {user?.email?.slice(0, 2) || 'US'}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-800 truncate">
+                {user?.full_name || 'User'}
+              </p>
+              <p className="text-[10px] text-slate-500 truncate">{user?.email}</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-slate-800 truncate">
-              {user?.full_name || 'User'}
-            </p>
-            <p className="text-[10px] text-slate-500 truncate">{user?.email}</p>
-          </div>
+          <button
+            onClick={onLogout}
+            className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+            title="Keluar"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+              />
+            </svg>
+          </button>
         </div>
-        <button
-          onClick={onLogout}
-          className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-          title="Keluar"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-            />
-          </svg>
-        </button>
-      </div>
+      )}
     </aside>
   );
 };

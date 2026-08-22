@@ -13,15 +13,19 @@ const AdminLayout = () => {
 
   const navItems = [
     { label: 'Ringkasan Dashboard', path: '/admin/dashboard' },
+    { label: 'Chatbot AI', path: '/admin/chatbot' },
     { label: 'Manajemen User', path: '/admin/users' },
     { label: 'Manajemen Kategori', path: '/admin/categories' },
     { label: 'Manajemen Dokumen', path: '/admin/documents' },
   ];
 
+  // Cek apakah sedang berada di halaman chatbot
+  const isChatbotPage = location.pathname === '/admin/chatbot';
+
   return (
-    <div className="min-h-screen bg-slate-100 flex">
-      {/* Sidebar Navigasi */}
-      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between p-4">
+    <div className="h-screen w-screen bg-slate-100 flex overflow-hidden">
+      {/* Sidebar Navigasi Utama Admin */}
+      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between p-4 flex-shrink-0 h-full">
         <div className="space-y-6">
           <div className="px-2 pt-2">
             <h2 className="text-lg font-bold text-white tracking-wide">KB Admin Panel</h2>
@@ -65,8 +69,8 @@ const AdminLayout = () => {
         </div>
       </aside>
 
-      {/* Area Konten Utama */}
-      <main className="flex-1 p-8 overflow-y-auto">
+      {/* Area Konten Utama: Jika halaman Chatbot, hapus padding p-8 */}
+      <main className={`flex-1 h-full overflow-hidden ${isChatbotPage ? 'p-0' : 'p-8 overflow-y-auto'}`}>
         <Outlet />
       </main>
     </div>

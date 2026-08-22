@@ -48,7 +48,7 @@ from sqlalchemy.orm import Session
 from app.core.security import get_current_user
 from app.database import get_db
 from app.models import Document, DocumentStatus, User
-from app.schemas import DocumentResponse
+from app.schemas import DocumentResponse, DocumentUpdate
 from app.services.document.indexing import (
     DocumentIndexingError,
     index_document,
@@ -371,6 +371,53 @@ def get_document_by_id(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Dokumen tidak ditemukan.",
         )
+
+    return document
+
+@router.put(
+    "/{document_id}",
+    response_model=DocumentResponse,
+)
+def update_document(
+    document_id: int,
+    doc_in: DocumentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Memperbarui metadata dokumen (Judul dan/atau Kategori).
+    """
+    document = (
+        db.query(Document)
+        .filter(Document.id == document_id)
+        .first()
+    )
+
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dokumen tidak ditemukan.",
+        )
+
+    if doc_in.title is not None:
+        title_stripped = doc_in.title.strip()
+        if title_stripped:
+            document.title = title_stripped
+
+    if doc_in.category_id is not None:
+        document.category_id = doc_in.category_id
+
+    try:
+        db.add(document)
+        db.commit()
+        db.refresh(document)
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Gagal memperbarui metadata dokumen ID %s.", document_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Gagal memperbarui data dokumen di database.",
+        ) from exc
 
     return document
 
