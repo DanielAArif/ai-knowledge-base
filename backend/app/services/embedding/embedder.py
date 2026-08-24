@@ -33,7 +33,7 @@ from ..preprocessing.models import ProcessedDocument
 from .models import EmbeddedChunk, EmbeddedDocument
 
 
-DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_MODEL = "intfloat/multilingual-e5-large"
 
 _E5_PASSAGE_PREFIX = "passage: "
 _E5_QUERY_PREFIX = "query: "

@@ -73,10 +73,10 @@ TEST_DOCUMENT_ID = "rag-test-document-001"
 
 TEST_PDF = (
     "/app/app/documents/"
-    "AI_Knowledge_Base_Project_Proposal.pdf"
+    "Sistem Pencernaan Manusia.docx"
 )
 
-QUESTION = "Apa saja fitur yang terdapat dalam AI Knowledge Base?"
+QUESTION = "Apa hubungan konsumsi lemak dengan kesehatan tubuh?"
 
 TOP_K = 3
 
