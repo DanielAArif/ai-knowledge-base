@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import api from '../../api/axios';
 
+// 1. Terima prop onUploadingChange dari parent layout
 const DocumentManagement = () => {
+  const { onUploadingChange } = useOutletContext() || {};
   const [documents, setDocuments] = useState([]);
   const [categories, setCategories] = useState([]);
   const [file, setFile] = useState(null);
@@ -13,6 +16,23 @@ const DocumentManagement = () => {
   const [editTitle, setEditTitle] = useState('');
   const [editCategoryId, setEditCategoryId] = useState('');
   const [updating, setUpdating] = useState(false);
+
+  // Synchronize status uploading ke parent & cegah browser refresh/close
+  useEffect(() => {
+    if (onUploadingChange) {
+      onUploadingChange(uploading);
+    }
+
+    const handleBeforeUnload = (e) => {
+      if (uploading) {
+        e.preventDefault();
+        e.returnValue = ''; // Menampilkan konfirmasi bawaan browser
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [uploading, onUploadingChange]);
 
   const fetchData = async () => {
     try {
@@ -60,7 +80,7 @@ const DocumentManagement = () => {
       setFile(null);
       setCategoryId('');
       fetchData();
-      alert('Dokumen berhasil diunggah!');
+      alert('Dokumen berhasil diunggah dan diproses ke Vector Store!');
     } catch (err) {
       alert(err.response?.data?.detail || 'Gagal mengunggah dokumen.');
     } finally {
@@ -99,8 +119,8 @@ const DocumentManagement = () => {
       });
 
       alert('Dokumen berhasil diperbarui!');
-      setSelectedDoc(null); // Tutup modal
-      fetchData(); // Refresh data
+      setSelectedDoc(null);
+      fetchData();
     } catch (err) {
       alert(err.response?.data?.detail || 'Gagal memperbarui dokumen.');
     } finally {
@@ -108,7 +128,7 @@ const DocumentManagement = () => {
     }
   };
 
-  // Helpers untuk pembacaan property
+  // Helpers
   const getDocumentName = (doc) => {
     return doc.filename || doc.file_name || doc.title || doc.name || 'Dokumen Tanpa Nama';
   };
@@ -138,18 +158,20 @@ const DocumentManagement = () => {
             <label className="block text-xs font-medium text-slate-700 mb-1">Pilih File (PDF/TXT/DOCX)</label>
             <input
               type="file"
+              disabled={uploading}
               onChange={(e) => setFile(e.target.files[0])}
               required
-              className="w-full text-xs text-slate-500 border border-slate-300 rounded-lg p-2"
+              className="w-full text-xs text-slate-500 border border-slate-300 rounded-lg p-2 disabled:bg-slate-100"
             />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">Kategori Dokumen</label>
             <select
               value={categoryId}
+              disabled={uploading}
               onChange={(e) => setCategoryId(e.target.value)}
               required
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100"
             >
               <option value="">-- Pilih Kategori --</option>
               {categories.map((c) => (
@@ -224,7 +246,6 @@ const DocumentManagement = () => {
       {selectedDoc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-            {/* Header Modal */}
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h3 className="font-semibold text-slate-800">Edit Data Dokumen</h3>
               <button
@@ -234,13 +255,9 @@ const DocumentManagement = () => {
                 ✕
               </button>
             </div>
-
-            {/* Form Edit Modal */}
             <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Judul / Nama Dokumen
-                </label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Judul / Nama Dokumen</label>
                 <input
                   type="text"
                   value={editTitle}
@@ -249,11 +266,8 @@ const DocumentManagement = () => {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Kategori Dokumen
-                </label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Kategori Dokumen</label>
                 <select
                   value={editCategoryId}
                   onChange={(e) => setEditCategoryId(e.target.value)}
@@ -268,8 +282,6 @@ const DocumentManagement = () => {
                   ))}
                 </select>
               </div>
-
-              {/* Action Buttons */}
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                 <button
                   type="button"

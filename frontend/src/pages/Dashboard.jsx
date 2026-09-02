@@ -136,6 +136,7 @@ const Dashboard = () => {
     };
     setMessages((prev) => [...prev, tempUserMsg]);
     setSendingMessage(true);
+    console.log('TYPING INDICATOR: TRUE');
 
     try {
       const response = await api.post(`/chat/sessions/${currentSession.id}/messages`, {
@@ -163,6 +164,7 @@ const Dashboard = () => {
       // Opsi: Tampilkan notifikasi error ke user
     } finally {
       setSendingMessage(false);
+      console.log('TYPING INDICATOR: FALSE');
     }
   };
 
@@ -186,8 +188,7 @@ const Dashboard = () => {
       <ChatArea
         activeSession={activeSession}
         messages={messages}
-        loadingMessages={loadingMessages}
-        sendingMessage={sendingMessage}
+        loading={sendingMessage}
         onSendMessage={handleSendMessage}
       />
     </div>
