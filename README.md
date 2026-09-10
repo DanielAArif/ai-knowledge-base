@@ -121,7 +121,7 @@ Add application screenshots here.
 
 | Login                      | Dashboard                          |
 | -------------------------- | ---------------------------------- |
-| ![Login](assets/login.png) | ![Dashboard](assets/dashboard.png) |
+| ![Login](frontend/src/assets/login.png) | ![Dashboard](frontend/src/assets/dashboard-w.png)![Dashboard](frontend/src/assets/dashboard-b.png) |
 
 | Document Management                | Chat                     |
 | ---------------------------------- | ------------------------ |
