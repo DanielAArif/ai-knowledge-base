@@ -1,13 +1,28 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Bot,
+  FileText,
+  Globe,
+  MessageSquare,
+  Search,
+  Send,
+  User,
+} from 'lucide-react';
 
-const ChatArea = ({ activeSession, messages = [], onSendMessage, sendingMessage }) => {
+const ChatArea = ({
+  activeSession,
+  messages = [],
+  onSendMessage,
+  sendingMessage,
+}) => {
   const [inputText, setInputText] = useState('');
   const [searchInChatQuery, setSearchInChatQuery] = useState('');
   const messagesEndRef = useRef(null);
 
-  // Auto-scroll ke pesan paling bawah setiap kali ada pesan baru
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({
+      behavior: 'smooth',
+    });
   }, [messages, sendingMessage]);
 
   const handleSubmit = (e) => {
@@ -19,7 +34,6 @@ const ChatArea = ({ activeSession, messages = [], onSendMessage, sendingMessage 
     setInputText('');
   };
 
-  // Helper untuk format waktu dari ISO Date String
   const formatTime = (dateString) => {
     if (!dateString) return '';
 
@@ -35,28 +49,26 @@ const ChatArea = ({ activeSession, messages = [], onSendMessage, sendingMessage 
     }
   };
 
-  // Filter pesan berdasarkan kata kunci pencarian
   const filteredMessages = messages.filter((msg) =>
     (msg.content || '')
       .toLowerCase()
       .includes(searchInChatQuery.toLowerCase())
   );
 
-  // Tampilan ketika belum ada sesi aktif
   if (!activeSession) {
     return (
-      <main className="flex-1 flex flex-col items-center justify-center bg-slate-50 text-slate-400 p-6">
-        <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center text-3xl mb-4">
-          💬
+      <main className="flex h-full flex-1 flex-col items-center justify-center bg-slate-50 p-6 dark:bg-neutral-950">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white text-slate-400 shadow-sm ring-1 ring-slate-200 dark:bg-neutral-900 dark:text-neutral-500 dark:ring-neutral-800">
+          <MessageSquare className="h-7 w-7" />
         </div>
 
-        <h2 className="text-lg font-semibold text-slate-700">
+        <h2 className="text-lg font-semibold text-slate-800 dark:text-neutral-200">
           Tidak Ada Sesi Chat yang Aktif
         </h2>
 
-        <p className="text-sm text-slate-500 mt-1 max-w-sm text-center">
-          Pilih sesi dari riwayat di sidebar atau mulai obrolan baru dengan
-          memilih dokumen / Chatbot Global.
+        <p className="mt-1 max-w-sm text-center text-sm text-slate-500 dark:text-neutral-500">
+          Pilih sesi dari sidebar atau mulai obrolan baru
+          dengan memilih dokumen atau Chatbot Global.
         </p>
       </main>
     );
@@ -65,200 +77,212 @@ const ChatArea = ({ activeSession, messages = [], onSendMessage, sendingMessage 
   const isGlobalMode = !activeSession.document_id;
 
   return (
-    <main className="flex-1 flex flex-col h-full bg-slate-50">
-
-      {/* Header Chat Panel */}
-      <header className="h-16 px-6 bg-white border-b border-slate-200 flex items-center justify-between shadow-sm z-10">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="text-2xl">
-            {isGlobalMode ? '🌐' : '📄'}
-          </span>
+    <main className="flex h-full flex-1 flex-col bg-slate-50 dark:bg-neutral-950">
+      <header className="z-10 flex min-h-16 items-center justify-between gap-4 border-b border-slate-200 bg-white px-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="flex min-w-0 items-center gap-3">
+          <div
+            className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${
+              isGlobalMode
+                ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400'
+                : 'bg-slate-100 text-slate-600 dark:bg-neutral-800 dark:text-neutral-400'
+            }`}
+          >
+            {isGlobalMode ? (
+              <Globe className="h-4 w-4" />
+            ) : (
+              <FileText className="h-4 w-4" />
+            )}
+          </div>
 
           <div className="min-w-0">
-            <h2 className="text-base font-bold text-slate-800 truncate">
+            <h2 className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
               {activeSession.title || 'New Chat'}
             </h2>
 
-            <p className="text-xs text-slate-500">
+            <p className="truncate text-xs text-slate-500 dark:text-neutral-500">
               {isGlobalMode
-                ? 'Mode: Chatbot Global (Seluruh Dokumen Knowledge Base)'
-                : `Mode: Dokumen Spesifik (ID Dokumen: ${activeSession.document_id})`}
+                ? 'Chatbot Global · Seluruh Dokumen Knowledge Base'
+                : `Dokumen Spesifik · ID Dokumen: ${activeSession.document_id}`}
             </p>
           </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="relative w-64">
+        <div className="relative hidden w-64 sm:block">
+          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+
           <input
             type="text"
             value={searchInChatQuery}
-            onChange={(e) => setSearchInChatQuery(e.target.value)}
+            onChange={(e) =>
+              setSearchInChatQuery(e.target.value)
+            }
             placeholder="Cari isi percakapan..."
-            className="w-full pl-8 pr-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 text-xs text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/10 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:placeholder:text-neutral-500 dark:focus:bg-neutral-800"
           />
-
-          <svg
-            className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
         </div>
       </header>
 
-      {/* Bubble Chat Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+        <div className="mx-auto max-w-4xl space-y-5">
+          {filteredMessages.length > 0 ? (
+            filteredMessages.map((msg, index) => {
+              const isUser = msg.role === 'user';
+              const metadata =
+                msg.metadata || msg.msg_metadata;
 
-        {filteredMessages.length > 0 ? (
-          filteredMessages.map((msg, index) => {
-            const isUser = msg.role === 'user';
-            const metadata = msg.metadata || msg.msg_metadata;
-
-            return (
-              <div
-                key={msg.id || index}
-                className={`flex ${
-                  isUser ? 'justify-end' : 'justify-start'
-                }`}
-              >
+              return (
                 <div
-                  className={`max-w-2xl px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                    isUser
-                      ? 'bg-blue-600 text-white rounded-br-none'
-                      : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'
+                  key={msg.id || index}
+                  className={`flex gap-3 ${
+                    isUser ? 'justify-end' : 'justify-start'
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">
-                    {msg.content}
-                  </p>
+                  {!isUser && (
+                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
+                      <Bot className="h-4 w-4" />
+                    </div>
+                  )}
 
-                  {/* Sumber Dokumen */}
-                  {!isUser &&
-                    metadata?.sources &&
-                    metadata.sources.length > 0 && (
-                      <div className="mt-3 pt-2 border-t border-slate-100 text-xs text-slate-500">
-                        <span className="font-semibold text-slate-600 block mb-1">
-                          📚 Sumber Referensi:
-                        </span>
-
-                        <ul className="list-disc list-inside space-y-0.5">
-                          {metadata.sources.map((src, i) => (
-                            <li key={i} className="truncate">
-                              {typeof src === 'string'
-                                ? src
-                                : src.document_title ||
-                                  src.source ||
-                                  'Dokumen RAG'}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                  {/* Waktu */}
-                  <p
-                    className={`text-[10px] mt-1.5 text-right ${
-                      isUser
-                        ? 'text-blue-100'
-                        : 'text-slate-400'
+                  <div
+                    className={`max-w-2xl ${
+                      isUser ? 'order-first' : ''
                     }`}
                   >
-                    {formatTime(msg.created_at)}
-                  </p>
+                    <div
+                      className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
+                        isUser
+                          ? 'rounded-br-md bg-blue-600 text-white'
+                          : 'rounded-bl-md border border-slate-200 bg-white text-slate-800 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200'
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap">
+                        {msg.content}
+                      </p>
+
+                      {!isUser &&
+                        metadata?.sources &&
+                        metadata.sources.length > 0 && (
+                          <div className="mt-3 border-t border-slate-100 pt-3 dark:border-neutral-800">
+                            <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-neutral-400">
+                              <FileText className="h-3.5 w-3.5" />
+                              Sumber Referensi
+                            </div>
+
+                            <div className="space-y-1.5">
+                              {metadata.sources.map((src, i) => (
+                                <div
+                                  key={i}
+                                  className="flex items-start gap-2 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs text-slate-500 dark:bg-neutral-800 dark:text-neutral-400"
+                                >
+                                  <span className="mt-0.5 text-[10px] text-slate-400">
+                                    {i + 1}.
+                                  </span>
+
+                                  <span className="truncate">
+                                    {typeof src === 'string'
+                                      ? src
+                                      : src.document_title ||
+                                        src.source ||
+                                        'Dokumen RAG'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                      <p
+                        className={`mt-2 text-right text-[10px] ${
+                          isUser
+                            ? 'text-blue-100'
+                            : 'text-slate-400 dark:text-neutral-600'
+                        }`}
+                      >
+                        {formatTime(msg.created_at)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {isUser && (
+                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-slate-700 text-white shadow-sm dark:bg-neutral-700">
+                      <User className="h-4 w-4" />
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <div className="flex h-full min-h-[300px] flex-col items-center justify-center text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-400 shadow-sm ring-1 ring-slate-200 dark:bg-neutral-900 dark:text-neutral-500 dark:ring-neutral-800">
+                <MessageSquare className="h-5 w-5" />
+              </div>
+
+              <p className="text-sm font-medium text-slate-600 dark:text-neutral-400">
+                Belum ada percakapan
+              </p>
+
+              <p className="mt-1 text-xs text-slate-400 dark:text-neutral-600">
+                Mulai ajukan pertanyaan tentang knowledge base.
+              </p>
+            </div>
+          )}
+
+          {sendingMessage && (
+            <div className="flex items-start gap-3">
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
+                <Bot className="h-4 w-4" />
+              </div>
+
+              <div className="rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:0.15s]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:0.3s]" />
                 </div>
               </div>
-            );
-          })
-        ) : (
-          <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
-            <span className="text-4xl">💬</span>
-            <p className="text-sm">
-              Belum ada percakapan. Mulai ajukan pertanyaan!
-            </p>
-          </div>
-        )}
-
-        {/* ==========================================
-            TYPING INDICATOR
-           ========================================== */}
-        {sendingMessage && (
-          <div className="flex justify-start">
-            <div className="bg-white border border-slate-200 px-4 py-3 rounded-2xl rounded-bl-none shadow-sm">
-
-              <div className="flex items-center gap-1.5">
-
-                {/* Dot 1 */}
-                <span
-                  className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
-                ></span>
-
-                {/* Dot 2 */}
-                <span
-                  className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0.15s]"
-                ></span>
-
-                {/* Dot 3 */}
-                <span
-                  className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0.3s]"
-                ></span>
-
-              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Anchor untuk auto-scroll */}
-        <div ref={messagesEndRef} />
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
-      {/* Input Prompt Footer */}
-      <div className="p-4 bg-white border-t border-slate-200">
+      <div className="border-t border-slate-200 bg-white px-4 py-4 dark:border-neutral-800 dark:bg-neutral-900">
         <form
           onSubmit={handleSubmit}
-          className="flex gap-2 max-w-4xl mx-auto"
+          className="mx-auto flex max-w-4xl items-end gap-2"
         >
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder={`Tanyakan sesuatu tentang ${
-              activeSession.title || 'dokumen'
-            }...`}
-            disabled={sendingMessage}
-            className="flex-1 px-4 py-2.5 bg-slate-100 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white disabled:opacity-50"
-          />
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder={`Tanyakan sesuatu tentang ${
+                activeSession.title || 'dokumen'
+              }...`}
+              disabled={sendingMessage}
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 pr-4 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:placeholder:text-neutral-500 dark:focus:bg-neutral-800"
+            />
+          </div>
 
           <button
             type="submit"
             disabled={sendingMessage || !inputText.trim()}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-xl transition-colors disabled:opacity-50 flex items-center gap-2 shadow-sm"
+            className="flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <span>Kirim</span>
+            <span className="hidden sm:inline">
+              {sendingMessage ? 'Mengirim...' : 'Kirim'}
+            </span>
 
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M14 5l7 7m0 0l-7 7m7-7H3"
-              />
-            </svg>
+            <Send className="h-4 w-4" />
           </button>
         </form>
-      </div>
 
+        <p className="mx-auto mt-2 max-w-4xl text-center text-[10px] text-slate-400 dark:text-neutral-600">
+          Jawaban AI dibuat berdasarkan dokumen yang tersedia di
+          Knowledge Base.
+        </p>
+      </div>
     </main>
   );
 };

@@ -110,17 +110,21 @@ const UserManagement = () => {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           {/* Breadcrumb */}
-          <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-neutral-500">
-            <Users size={16} />
-
-            <span>Pengaturan Sistem</span>
-
-            <span>/</span>
-
-            <span className="text-slate-700 dark:text-neutral-300">
-              Pengguna
-            </span>
-          </div>
+          <div className="
+              flex
+              items-center
+              gap-2
+              text-[11px]
+              font-medium
+              text-slate-400 dark:text-slate-500
+              mb-1
+            ">
+              <span>Admin</span>
+              <span>/</span>
+              <span className="text-slate-500 dark:text-slate-400">
+                Manajemen User
+              </span>
+            </div>
 
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-neutral-100">
             Manajemen Pengguna
