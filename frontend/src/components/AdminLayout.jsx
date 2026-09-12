@@ -143,7 +143,7 @@ const AdminLayout = () => {
                 tracking-tight
                 text-slate-900 dark:text-white
               ">
-                Knowledge Base
+                DokuMind
               </h1>
 
               <p className="

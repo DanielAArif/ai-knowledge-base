@@ -5,7 +5,6 @@ const ChatArea = ({ activeSession, messages = [], onSendMessage, sendingMessage 
   const [searchInChatQuery, setSearchInChatQuery] = useState('');
   const messagesEndRef = useRef(null);
 
-  // Auto-scroll ke pesan paling bawah setiap kali ada pesan baru
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, sendingMessage]);
@@ -19,42 +18,77 @@ const ChatArea = ({ activeSession, messages = [], onSendMessage, sendingMessage 
     setInputText('');
   };
 
-  // Helper untuk format waktu dari ISO Date String
   const formatTime = (dateString) => {
     if (!dateString) return '';
 
     try {
-      const date = new Date(dateString);
+      let value = dateString;
 
-      return date.toLocaleTimeString([], {
+      if (
+        typeof value === 'string' &&
+        !value.endsWith('Z') &&
+        !/[+-]\d{2}:\d{2}$/.test(value)
+      ) {
+        value = `${value}Z`;
+      }
+
+      const date = new Date(value);
+
+      if (Number.isNaN(date.getTime())) {
+        return '';
+      }
+
+      return new Intl.DateTimeFormat('id-ID', {
+        timeZone: 'Asia/Jakarta',
         hour: '2-digit',
         minute: '2-digit',
-      });
+        hour12: false,
+      }).format(date);
     } catch {
       return '';
     }
   };
 
-  // Filter pesan berdasarkan kata kunci pencarian
+  const renderFormattedText = (text) => {
+    if (!text) return null;
+
+    const parts = String(text).split(/(\*\*.*?\*\*)/g);
+
+    return parts.map((part, index) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return (
+          <strong key={index}>
+            {part.slice(2, -2)}
+          </strong>
+        );
+      }
+
+      return (
+        <React.Fragment key={index}>
+          {part}
+        </React.Fragment>
+      );
+    });
+  };
+
   const filteredMessages = messages.filter((msg) =>
     (msg.content || '')
       .toLowerCase()
       .includes(searchInChatQuery.toLowerCase())
   );
 
-  // Tampilan ketika belum ada sesi aktif
   if (!activeSession) {
     return (
-      <main className="flex-1 flex flex-col items-center justify-center bg-slate-50 text-slate-400 p-6">
-        <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center text-3xl mb-4">
+      <main className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-neutral-900 text-slate-400 dark:text-slate-500 p-6">
+        <div className="w-16 h-16 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center text-3xl mb-4">
           💬
         </div>
 
-        <h2 className="text-lg font-semibold text-slate-700">
+        <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200">
           Tidak Ada Sesi Chat yang Aktif
         </h2>
 
-        <p className="text-sm text-slate-500 mt-1 max-w-sm text-center">
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm text-center">
           Pilih sesi dari riwayat di sidebar atau mulai obrolan baru dengan
           memilih dokumen / Chatbot Global.
         </p>
@@ -64,27 +98,41 @@ const ChatArea = ({ activeSession, messages = [], onSendMessage, sendingMessage 
 
   const isGlobalMode = !activeSession.document_id;
 
+  const rawTitle = activeSession.title || 'New Chat';
+
+  const displayTitle = rawTitle
+    .replace(/^##\s*Chat:\s*/i, '')
+    .replace(/^Chat:\s*/i, '')
+    .trim();
+
   return (
-    <main className="flex-1 flex flex-col h-full bg-slate-50">
+    <main className="flex-1 min-w-0 flex flex-col h-full bg-slate-50 dark:bg-neutral-900">
 
       {/* Header Chat Panel */}
-      <header className="h-16 px-6 bg-white border-b border-slate-200 flex items-center justify-between shadow-sm z-10">
+      <header className="h-16 px-6 bg-white dark:bg-neutral-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shadow-sm dark:shadow-none z-10">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="text-2xl">
-            {isGlobalMode ? '🌐' : '📄'}
-          </span>
 
+          {/* Icon */}
+          <div className="w-9 h-9 shrink-0 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center text-lg">
+            {isGlobalMode ? '🌐' : '📄'}
+          </div>
+
+          {/* Chat Info */}
           <div className="min-w-0">
-            <h2 className="text-base font-bold text-slate-800 truncate">
-              {activeSession.title || 'New Chat'}
+            <h2
+              className="text-sm font-semibold text-slate-800 dark:text-white truncate"
+              title={isGlobalMode ? 'Knowledge Base' : displayTitle}
+            >
+              {isGlobalMode ? 'Knowledge Base' : displayTitle}
             </h2>
 
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               {isGlobalMode
-                ? 'Mode: Chatbot Global (Seluruh Dokumen Knowledge Base)'
-                : `Mode: Dokumen Spesifik (ID Dokumen: ${activeSession.document_id})`}
+                ? 'Semua Dokumen'
+                : 'Dokumen Spesifik'}
             </p>
           </div>
+
         </div>
 
         {/* Search Bar */}
@@ -94,20 +142,26 @@ const ChatArea = ({ activeSession, messages = [], onSendMessage, sendingMessage 
             value={searchInChatQuery}
             onChange={(e) => setSearchInChatQuery(e.target.value)}
             placeholder="Cari isi percakapan..."
-            className="w-full pl-8 pr-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            className="w-full pl-8 pr-3 py-2 bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-neutral-900"
           />
 
           <svg
-            className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5"
+            className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
+            aria-hidden="true"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
+            <circle
+              cx="11"
+              cy="11"
+              r="7"
               strokeWidth="2"
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
+            <path
+              d="M20 20L16 16"
+              strokeWidth="2"
+              strokeLinecap="round"
             />
           </svg>
         </div>
@@ -129,22 +183,22 @@ const ChatArea = ({ activeSession, messages = [], onSendMessage, sendingMessage 
                 }`}
               >
                 <div
-                  className={`max-w-2xl px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                  className={`max-w-2xl px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm dark:shadow-none ${
                     isUser
                       ? 'bg-blue-600 text-white rounded-br-none'
-                      : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'
+                      : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-bl-none'
                   }`}
                 >
                   <p className="whitespace-pre-wrap">
-                    {msg.content}
+                    {renderFormattedText(msg.content)}
                   </p>
 
                   {/* Sumber Dokumen */}
                   {!isUser &&
                     metadata?.sources &&
                     metadata.sources.length > 0 && (
-                      <div className="mt-3 pt-2 border-t border-slate-100 text-xs text-slate-500">
-                        <span className="font-semibold text-slate-600 block mb-1">
+                      <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400">
+                        <span className="font-semibold text-slate-600 dark:text-slate-200 block mb-1">
                           📚 Sumber Referensi:
                         </span>
 
@@ -167,7 +221,7 @@ const ChatArea = ({ activeSession, messages = [], onSendMessage, sendingMessage 
                     className={`text-[10px] mt-1.5 text-right ${
                       isUser
                         ? 'text-blue-100'
-                        : 'text-slate-400'
+                        : 'text-slate-400 dark:text-slate-400'
                     }`}
                   >
                     {formatTime(msg.created_at)}
@@ -177,7 +231,7 @@ const ChatArea = ({ activeSession, messages = [], onSendMessage, sendingMessage 
             );
           })
         ) : (
-          <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
+          <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 space-y-2">
             <span className="text-4xl">💬</span>
             <p className="text-sm">
               Belum ada percakapan. Mulai ajukan pertanyaan!
@@ -185,41 +239,25 @@ const ChatArea = ({ activeSession, messages = [], onSendMessage, sendingMessage 
           </div>
         )}
 
-        {/* ==========================================
-            TYPING INDICATOR
-           ========================================== */}
+        {/* TYPING INDICATOR */}
         {sendingMessage && (
           <div className="flex justify-start">
-            <div className="bg-white border border-slate-200 px-4 py-3 rounded-2xl rounded-bl-none shadow-sm">
+            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-3 rounded-2xl rounded-bl-none shadow-sm dark:shadow-none">
 
               <div className="flex items-center gap-1.5">
-
-                {/* Dot 1 */}
-                <span
-                  className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
-                ></span>
-
-                {/* Dot 2 */}
-                <span
-                  className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0.15s]"
-                ></span>
-
-                {/* Dot 3 */}
-                <span
-                  className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0.3s]"
-                ></span>
-
+                <span className="w-2 h-2 bg-slate-400 dark:bg-slate-400 rounded-full animate-bounce"></span>
+                <span className="w-2 h-2 bg-slate-400 dark:bg-slate-400 rounded-full animate-bounce [animation-delay:0.15s]"></span>
+                <span className="w-2 h-2 bg-slate-400 dark:bg-slate-400 rounded-full animate-bounce [animation-delay:0.3s]"></span>
               </div>
             </div>
           </div>
         )}
 
-        {/* Anchor untuk auto-scroll */}
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input Prompt Footer */}
-      <div className="p-4 bg-white border-t border-slate-200">
+      <div className="p-4 bg-white dark:bg-neutral-950 border-t border-slate-200 dark:border-slate-800">
         <form
           onSubmit={handleSubmit}
           className="flex gap-2 max-w-4xl mx-auto"
@@ -229,16 +267,16 @@ const ChatArea = ({ activeSession, messages = [], onSendMessage, sendingMessage 
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             placeholder={`Tanyakan sesuatu tentang ${
-              activeSession.title || 'dokumen'
+              isGlobalMode ? 'Knowledge Base' : displayTitle
             }...`}
             disabled={sendingMessage}
-            className="flex-1 px-4 py-2.5 bg-slate-100 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white disabled:opacity-50"
+            className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-neutral-900 disabled:opacity-50"
           />
 
           <button
             type="submit"
             disabled={sendingMessage || !inputText.trim()}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-xl transition-colors disabled:opacity-50 flex items-center gap-2 shadow-sm"
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-xl transition-colors disabled:opacity-50 flex items-center gap-2 shadow-sm dark:shadow-none"
           >
             <span>Kirim</span>
 

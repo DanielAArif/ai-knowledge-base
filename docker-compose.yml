@@ -48,10 +48,12 @@ services:
       
       # Gemini
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - HF_HUB_OFFLINE=1
 
     volumes:
       - ./backend:/app
       - ./backend/uploads:/app/uploads
+      - fastembed_cache:/tmp/fastembed_cache
     depends_on:
       - postgres
       - chromadb
@@ -74,3 +76,4 @@ services:
 volumes:
   postgres_data:
   chroma_data:
+  fastembed_cache:
