@@ -101,7 +101,7 @@ const AdminLayout = () => {
     .toUpperCase();
 
   return (
-    <div className="h-screen w-screen bg-slate-50 dark:bg-neutral-950 flex overflow-hidden relative transition-colors duration-200">
+    <div className="h-screen w-full bg-slate-50 dark:bg-neutral-950 flex overflow-hidden relative transition-colors duration-200">
 
       {/* =========================================================
           SIDEBAR

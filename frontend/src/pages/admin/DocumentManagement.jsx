@@ -686,31 +686,26 @@ return ( <div className="space-y-6">
           <select
             value={categoryId}
             disabled={uploading}
-            onChange={(e) =>
-              setCategoryId(
-                e.target.value
-              )
-            }
+            onChange={(e) => setCategoryId(e.target.value)}
             required
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:bg-neutral-950"
           >
-
-            <option value="">
-              -- Pilih Kategori --
+            <option
+              value=""
+              className="bg-white text-slate-900 dark:bg-neutral-950 dark:text-neutral-100"
+            >
+              Pilih Kategori
             </option>
 
-            {categories.map(
-              (category) => (
-                <option
-                  key={category.id}
-                  value={category.id}
-                >
-                  {category.name ||
-                    category.title}
-                </option>
-              )
-            )}
-
+            {categories.map((category) => (
+              <option
+                key={category.id}
+                value={category.id}
+                className="bg-white text-slate-900 dark:bg-neutral-950 dark:text-neutral-100"
+              >
+                {category.name || category.title}
+              </option>
+            ))}
           </select>
 
         </div>
@@ -792,25 +787,25 @@ return ( <div className="space-y-6">
     {/* Table */}
     <div className="overflow-x-auto">
 
-      <table className="w-full min-w-[900px] text-left">
+      <table className="w-full table-fixed text-left">
 
         <thead>
 
           <tr className="border-b border-slate-200 bg-slate-50/70 dark:border-neutral-800 dark:bg-neutral-950/60">
 
-            <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-neutral-500">
+            <th className="w-[50%] px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-neutral-500">
               Dokumen
             </th>
 
-            <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-neutral-500">
+            <th className="w-[15%] px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-neutral-500">
               Kategori
             </th>
 
-            <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-neutral-500">
+            <th className="w-[15%] px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-neutral-500">
               Status RAG
             </th>
 
-            <th className="px-6 py-3.5 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-neutral-500">
+            <th className="w-[20%] px-6 py-3.5 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-neutral-500">
               Aksi
             </th>
 
@@ -1215,13 +1210,9 @@ return ( <div className="space-y-6">
             <input
               type="text"
               value={editTitle}
-              onChange={(e) =>
-                setEditTitle(
-                  e.target.value
-                )
-              }
+              onChange={(e) => setEditTitle(e.target.value)}
               required
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/10 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/10 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:bg-neutral-950"
             />
 
           </div>
@@ -1234,36 +1225,27 @@ return ( <div className="space-y-6">
             </label>
 
             <select
-              value={
-                editCategoryId
-              }
-              onChange={(e) =>
-                setEditCategoryId(
-                  e.target.value
-                )
-              }
+              value={editCategoryId}
+              onChange={(e) => setEditCategoryId(e.target.value)}
               required
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/10 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/10 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:bg-neutral-950"
             >
-
-              <option value="">
-                -- Pilih Kategori --
+              <option
+                value=""
+                className="bg-white text-slate-900 dark:bg-neutral-950 dark:text-neutral-100"
+              >
+                Pilih Kategori
               </option>
 
-              {categories.map(
-                (category) => (
-                  <option
-                    key={category.id}
-                    value={
-                      category.id
-                    }
-                  >
-                    {category.name ||
-                      category.title}
-                  </option>
-                )
-              )}
-
+              {categories.map((category) => (
+                <option
+                  key={category.id}
+                  value={category.id}
+                  className="bg-white text-slate-900 dark:bg-neutral-950 dark:text-neutral-100"
+                >
+                  {category.name || category.title}
+                </option>
+              ))}
             </select>
 
           </div>
