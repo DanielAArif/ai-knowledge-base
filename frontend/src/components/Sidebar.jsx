@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import api from '../api/axios';
 
 const Sidebar = ({
   documents = [],
@@ -13,8 +13,6 @@ const Sidebar = ({
   onLogout,
   user,
 }) => {
-  const navigate = useNavigate();
-
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [documentLimit, setDocumentLimit] = useState(20);
@@ -48,50 +46,108 @@ const Sidebar = ({
     }
   };
 
-  const handleDownload = async (documentId, filename) => {
-    try {
-      const response = await fetch(`/documents/${documentId}/download`, {
-        credentials: 'include',
-      });
+  const handleDownload = async (e, documentId, documentTitle) => {
+    e.stopPropagation();
 
-      if (!response.ok) {
-        throw new Error('Gagal mengunduh dokumen');
+    try {
+      const response = await api.get(
+        `/documents/${documentId}/download`,
+        {
+          responseType: 'blob',
+        }
+      );
+
+      let filename = '';
+
+      const disposition =
+        response.headers['content-disposition'];
+
+      if (
+        disposition &&
+        disposition.includes('filename=')
+      ) {
+        const filenameMatch =
+          disposition.match(/filename="?([^";]+)"?/);
+
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1];
+        }
       }
 
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      if (!filename) {
+        filename =
+          documentTitle || `document-${documentId}`;
+      }
+
+      const contentType =
+        response.headers['content-type'] || '';
+
+      if (
+        contentType.includes('wordprocessingml') ||
+        contentType.includes('docx')
+      ) {
+        if (!filename.toLowerCase().endsWith('.docx')) {
+          filename = `${filename}.docx`;
+        }
+      } else if (contentType.includes('pdf')) {
+        if (!filename.toLowerCase().endsWith('.pdf')) {
+          filename = `${filename}.pdf`;
+        }
+      }
+
+      const blob = new Blob([response.data], {
+        type:
+          contentType || 'application/octet-stream',
+      });
+
+      const downloadUrl =
+        window.URL.createObjectURL(blob);
 
       const link = document.createElement('a');
-      link.href = url;
-      link.download = filename || 'document';
+
+      link.href = downloadUrl;
+      link.setAttribute('download', filename);
+
       document.body.appendChild(link);
       link.click();
 
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      link.parentNode.removeChild(link);
+
+      window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
-      console.error('Gagal mengunduh dokumen:', error);
+      console.error(
+        'Gagal mengunduh dokumen:',
+        error
+      );
     }
   };
 
-  const Tooltip = ({ children, text }) => {
+  const Tooltip = ({ text }) => {
     if (!isCollapsed) return null;
 
     return (
       <div
         className="
-          absolute left-full top-1/2 -translate-y-1/2 ml-3
+          absolute
+          left-full
+          top-1/2
+          -translate-y-1/2
+          ml-3
           z-[100]
           whitespace-nowrap
           rounded-lg
           bg-blue-600
-          px-3 py-2
-          text-xs font-medium text-white
+          px-3
+          py-2
+          text-xs
+          font-medium
+          text-white
           shadow-lg
           opacity-0
           pointer-events-none
           group-hover:opacity-100
-          transition-opacity duration-200
+          transition-opacity
+          duration-200
         "
       >
         {text}
@@ -101,23 +157,25 @@ const Sidebar = ({
 
   return (
     <aside
-      className={`
-        relative
-        shrink-0
-        h-full
-        border-r
-        border-slate-200 dark:border-slate-800
-        bg-white dark:bg-neutral-950
-        flex
-        flex-col
-        select-none
-        overflow-hidden
-        transition-[width]
-        duration-300
-        ease-in-out
-        ${isCollapsed ? 'w-16' : 'w-80'}
-      `}
-    >
+    className={`
+      relative
+      shrink-0
+      h-full
+      border-r
+      border-slate-200
+      dark:border-slate-800
+      bg-white
+      dark:bg-neutral-950
+      flex
+      flex-col
+      select-none
+      overflow-hidden
+      transition-[width]
+      duration-300
+      ease-in-out
+      ${isCollapsed ? 'w-16' : 'w-80'}
+    `}
+  >
       {/* =========================
           HEADER
       ========================== */}
@@ -126,17 +184,23 @@ const Sidebar = ({
           h-16
           shrink-0
           border-b
-          border-slate-200 dark:border-slate-800
+          border-slate-200
+          dark:border-slate-800
           flex
           items-center
-          ${isCollapsed ? 'justify-center' : 'justify-between px-4'}
+          ${
+            isCollapsed
+              ? 'justify-center'
+              : 'justify-between px-4'
+          }
         `}
       >
         {!isCollapsed && (
           <div className="flex items-center gap-3 min-w-0">
             <div
               className="
-                w-9 h-9
+                w-9
+                h-9
                 rounded-xl
                 bg-blue-600
                 flex
@@ -172,22 +236,33 @@ const Sidebar = ({
           </div>
         )}
 
+        {/* Collapse Button */}
         <div className="relative group">
           <button
             type="button"
-            onClick={() => setIsCollapsed((prev) => !prev)}
+            onClick={() =>
+              setIsCollapsed((prev) => !prev)
+            }
             className="
-              w-9 h-9
+              w-9
+              h-9
               rounded-lg
               flex
               items-center
               justify-center
-              text-slate-500 dark:text-slate-400
-              hover:bg-slate-100 dark:hover:bg-slate-800
-              hover:text-slate-900 dark:hover:text-white
+              text-slate-500
+              dark:text-slate-400
+              hover:bg-slate-100
+              dark:hover:bg-slate-800
+              hover:text-slate-900
+              dark:hover:text-white
               transition-colors
             "
-            aria-label={isCollapsed ? 'Perbesar sidebar' : 'Perkecil sidebar'}
+            aria-label={
+              isCollapsed
+                ? 'Perbesar sidebar'
+                : 'Perkecil sidebar'
+            }
           >
             <svg
               width="18"
@@ -202,13 +277,25 @@ const Sidebar = ({
             >
               {isCollapsed ? (
                 <>
-                  <rect x="3" y="4" width="18" height="16" rx="2" />
+                  <rect
+                    x="3"
+                    y="4"
+                    width="18"
+                    height="16"
+                    rx="2"
+                  />
                   <path d="M9 4v16" />
                   <path d="m13 9 3 3-3 3" />
                 </>
               ) : (
                 <>
-                  <rect x="3" y="4" width="18" height="16" rx="2" />
+                  <rect
+                    x="3"
+                    y="4"
+                    width="18"
+                    height="16"
+                    rx="2"
+                  />
                   <path d="M9 4v16" />
                   <path d="m15 9-3 3 3 3" />
                 </>
@@ -217,7 +304,11 @@ const Sidebar = ({
           </button>
 
           <Tooltip
-            text={isCollapsed ? 'Perbesar sidebar' : 'Perkecil sidebar'}
+            text={
+              isCollapsed
+                ? 'Perbesar sidebar'
+                : 'Perkecil sidebar'
+            }
           />
         </div>
       </div>
@@ -233,19 +324,24 @@ const Sidebar = ({
               type="button"
               onClick={() => {
                 setIsCollapsed(false);
+
                 setTimeout(() => {
                   setShowSearch(true);
                 }, 300);
               }}
               className="
-                w-10 h-10
+                w-10
+                h-10
                 rounded-lg
                 flex
                 items-center
                 justify-center
-                text-slate-500 dark:text-slate-400
-                hover:bg-slate-100 dark:hover:bg-slate-800
-                hover:text-slate-900 dark:hover:text-white
+                text-slate-500
+                dark:text-slate-400
+                hover:bg-slate-100
+                dark:hover:bg-slate-800
+                hover:text-slate-900
+                dark:hover:text-white
                 transition-colors
               "
             >
@@ -273,7 +369,8 @@ const Sidebar = ({
               type="button"
               onClick={handleCreateGlobalChat}
               className={`
-                w-10 h-10
+                w-10
+                h-10
                 rounded-lg
                 flex
                 items-center
@@ -309,14 +406,18 @@ const Sidebar = ({
               type="button"
               onClick={() => setIsCollapsed(false)}
               className="
-                w-10 h-10
+                w-10
+                h-10
                 rounded-lg
                 flex
                 items-center
                 justify-center
-                text-slate-500 dark:text-slate-400
-                hover:bg-blue-100 dark:hover:bg-blue-500/10
-                hover:text-slate-900 dark:hover:text-white
+                text-slate-500
+                dark:text-slate-400
+                hover:bg-blue-100
+                dark:hover:bg-blue-500/10
+                hover:text-slate-900
+                dark:hover:text-white
                 transition-colors
               "
             >
@@ -346,14 +447,18 @@ const Sidebar = ({
               type="button"
               onClick={() => setIsCollapsed(false)}
               className="
-                w-10 h-10
+                w-10
+                h-10
                 rounded-lg
                 flex
                 items-center
                 justify-center
-                text-slate-500 dark:text-slate-400
-                hover:bg-blue-100 dark:hover:bg-blue-500/10
-                hover:text-slate-900 dark:hover:text-white
+                text-slate-500
+                dark:text-slate-400
+                hover:bg-blue-100
+                dark:hover:bg-blue-500/10
+                hover:text-slate-900
+                dark:hover:text-white
                 transition-colors
               "
             >
@@ -411,18 +516,25 @@ const Sidebar = ({
                   h-10
                   rounded-lg
                   border
-                  border-blue-100 dark:border-slate-700
-                  bg-slate-50 dark:bg-slate-800/50
+                  border-blue-100
+                  dark:border-slate-700
+                  bg-slate-50
+                  dark:bg-slate-800/50
                   pl-9
                   pr-3
                   text-sm
-                  text-slate-700 dark:text-slate-200
-                  placeholder:text-slate-400 dark:placeholder:text-slate-500
+                  text-slate-700
+                  dark:text-slate-200
+                  placeholder:text-slate-400
+                  dark:placeholder:text-slate-500
                   outline-none
-                  focus:border-blue-400 dark:focus:border-blue-500
+                  focus:border-blue-400
+                  dark:focus:border-blue-500
                   focus:ring-2
-                  focus:ring-blue-100 dark:focus:ring-blue-500/20
-                  focus:bg-white dark:focus:bg-neutral-900
+                  focus:ring-blue-100
+                  dark:focus:ring-blue-500/20
+                  focus:bg-white
+                  dark:focus:bg-neutral-900
                   transition-colors
                 "
               />
@@ -451,7 +563,8 @@ const Sidebar = ({
             >
               <div
                 className="
-                  w-8 h-8
+                  w-8
+                  h-8
                   rounded-lg
                   bg-white/10
                   flex
@@ -514,163 +627,191 @@ const Sidebar = ({
                 </p>
               </div>
             ) : (
-              <div className="space-y-1">
-                {visibleDocuments.map((doc) => {
-                  const isActive =
-                    activeSession?.document_id === doc.id;
+              <>
+                <div className="space-y-1">
+                  {visibleDocuments.map((doc) => {
+                    const isActive =
+                      activeSession?.document_id ===
+                      doc.id;
 
-                  return (
-                    <div
-                      key={doc.id}
-                      className={`
-                        group
-                        relative
-                        rounded-lg
-                        transition-colors
-                        ${
-                          isActive
-                            ? 'bg-blue-100 dark:bg-blue-500/10'
-                            : 'hover:bg-blue-100 dark:hover:bg-blue-500/10'
-                        }
-                      `}
-                    >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleCreateDocumentChat(doc.id)
-                        }
-                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
+                    return (
+                      <div
+                        key={doc.id}
+                        className={`
+                          group
+                          relative
+                          rounded-lg
+                          transition-colors
+                          ${
+                            isActive
+                              ? 'bg-blue-100 dark:bg-blue-500/10'
+                              : 'hover:bg-blue-100 dark:hover:bg-blue-500/10'
+                          }
+                        `}
                       >
-                        <div
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleCreateDocumentChat(
+                              doc.id
+                            )
+                          }
+                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
+                        >
+                          <div
+                            className="
+                              w-8
+                              h-8
+                              rounded-lg
+                              bg-slate-100
+                              dark:bg-slate-800
+                              border
+                              border-slate-200
+                              dark:border-slate-700
+                              flex
+                              items-center
+                              justify-center
+                              shrink-0
+                              group-hover:bg-white
+                              dark:group-hover:bg-neutral-900
+                            "
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="text-slate-500 dark:text-slate-400"
+                            >
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+                              <path d="M14 2v6h6" />
+                            </svg>
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm text-slate-700 dark:text-slate-200 truncate">
+                              {doc.title ||
+                                doc.filename}
+                            </p>
+
+                            {doc.title &&
+                              doc.filename && (
+                                <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                                  {doc.filename}
+                                </p>
+                              )}
+                          </div>
+                        </button>
+
+                        {/* Download */}
+                        <button
+                          type="button"
+                          onClick={(e) =>
+                            handleDownload(
+                              e,
+                              doc.id,
+                              doc.filename ||
+                                doc.title
+                            )
+                          }
                           className="
-                            w-8 h-8
-                            rounded-lg
-                            bg-slate-100 dark:bg-slate-800
-                            border
-                            border-slate-200 dark:border-slate-700
+                            absolute
+                            right-2
+                            top-1/2
+                            -translate-y-1/2
+                            w-7
+                            h-7
+                            rounded-md
                             flex
                             items-center
                             justify-center
-                            shrink-0
-                            group-hover:bg-white dark:group-hover:bg-neutral-900
+                            text-slate-400
+                            dark:text-slate-500
+                            opacity-0
+                            group-hover:opacity-100
+                            hover:bg-white
+                            dark:hover:bg-neutral-900
+                            hover:text-slate-700
+                            dark:hover:text-slate-200
+                            transition-all
                           "
+                          title="Download dokumen"
                         >
                           <svg
-                            width="16"
-                            height="16"
+                            width="15"
+                            height="15"
                             viewBox="0 0 24 24"
                             fill="none"
                             stroke="currentColor"
                             strokeWidth="2"
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            className="text-slate-500 dark:text-slate-400"
                           >
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-                            <path d="M14 2v6h6" />
+                            <path d="M12 3v12" />
+                            <path d="m7 10 5 5 5-5" />
+                            <path d="M5 21h14" />
                           </svg>
-                        </div>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
 
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm text-slate-700 dark:text-slate-200 truncate">
-                            {doc.title || doc.filename}
-                          </p>
-
-                          {doc.title && doc.filename && (
-                            <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
-                              {doc.filename}
-                            </p>
-                          )}
-                        </div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-
-                          handleDownload(
-                            doc.id,
-                            doc.filename || doc.title
-                          );
-                        }}
-                        className="
-                          absolute
-                          right-2
-                          top-1/2
-                          -translate-y-1/2
-                          w-7
-                          h-7
-                          rounded-md
-                          flex
-                          items-center
-                          justify-center
-                          text-slate-400 dark:text-slate-500
-                          opacity-0
-                          group-hover:opacity-100
-                          hover:bg-white dark:hover:bg-neutral-900
-                          hover:text-slate-700 dark:hover:text-slate-200
-                          transition-all
-                        "
-                        title="Download dokumen"
-                      >
-                        <svg
-                          width="15"
-                          height="15"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M12 3v12" />
-                          <path d="m7 10 5 5 5-5" />
-                          <path d="M5 21h14" />
-                        </svg>
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+                {/* Document pagination */}
+                {visibleDocuments.length <
+                filteredDocuments.length ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDocumentLimit(
+                        (prev) => prev + 20
+                      )
+                    }
+                    className="
+                      w-full
+                      mt-2
+                      py-2
+                      rounded-lg
+                      text-xs
+                      font-medium
+                      text-blue-600
+                      dark:text-blue-400
+                      hover:bg-blue-50
+                      dark:hover:bg-blue-500/10
+                      transition-colors
+                    "
+                  >
+                    Muat lebih banyak
+                  </button>
+                ) : documentLimit > 20 ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDocumentLimit(20)
+                    }
+                    className="
+                      w-full
+                      mt-2
+                      py-2
+                      rounded-lg
+                      text-xs
+                      font-medium
+                      text-slate-500
+                      dark:text-slate-400
+                      hover:bg-slate-100
+                      dark:hover:bg-slate-800
+                      transition-colors
+                    "
+                  >
+                    Tampilkan lebih sedikit
+                  </button>
+                ) : null}
+              </>
             )}
-            {visibleDocuments.length < filteredDocuments.length ? (
-              <button
-                type="button"
-                onClick={() => setDocumentLimit((prev) => prev + 20)}
-                className="
-                  w-full
-                  mt-2
-                  py-2
-                  rounded-lg
-                  text-xs
-                  font-medium
-                  text-blue-600 dark:text-blue-400
-                  hover:bg-blue-50 dark:hover:bg-blue-500/10
-                  transition-colors
-                "
-              >
-                Muat lebih banyak
-              </button>
-            ) : documentLimit > 20 ? (
-              <button
-                type="button"
-                onClick={() => setDocumentLimit(20)}
-                className="
-                  w-full
-                  mt-2
-                  py-2
-                  rounded-lg
-                  text-xs
-                  font-medium
-                  text-slate-500 dark:text-slate-400
-                  hover:bg-slate-100 dark:hover:bg-slate-800
-                  transition-colors
-                "
-              >
-                Tampilkan lebih sedikit
-              </button>
-            ) : null}
           </section>
 
           {/* Chat History */}
@@ -694,81 +835,97 @@ const Sidebar = ({
             ) : (
               <>
                 <div className="space-y-1">
-                  {visibleChatSessions.map((session) => {
-                    const isActive =
-                      activeSession?.id === session.id;
+                  {visibleChatSessions.map(
+                    (session) => {
+                      const isActive =
+                        activeSession?.id ===
+                        session.id;
 
-                    return (
-                      <button
-                        key={session.id}
-                        type="button"
-                        onClick={() => setActiveSession(session)}
-                        className={`
-                          w-full
-                          flex
-                          items-center
-                          gap-3
-                          rounded-lg
-                          px-3
-                          py-2.5
-                          text-left
-                          transition-colors
-                          ${
-                            isActive
-                              ? 'bg-blue-50 dark:bg-blue-500/10'
-                              : 'hover:bg-blue-50/70 dark:hover:bg-blue-500/5'
+                      return (
+                        <button
+                          key={session.id}
+                          type="button"
+                          onClick={() =>
+                            setActiveSession(session)
                           }
-                        `}
-                      >
-                        <div
-                          className="
-                            w-8 h-8
-                            rounded-lg
+                          className={`
+                            w-full
                             flex
                             items-center
-                            justify-center
-                            shrink-0
-                            bg-slate-100 dark:bg-slate-800
-                            text-slate-500 dark:text-slate-400
-                          "
+                            gap-3
+                            rounded-lg
+                            px-3
+                            py-2.5
+                            text-left
+                            transition-colors
+                            ${
+                              isActive
+                                ? 'bg-blue-50 dark:bg-blue-500/10'
+                                : 'hover:bg-blue-50/70 dark:hover:bg-blue-500/5'
+                            }
+                          `}
                         >
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
+                          <div
+                            className="
+                              w-8
+                              h-8
+                              rounded-lg
+                              flex
+                              items-center
+                              justify-center
+                              shrink-0
+                              bg-slate-100
+                              dark:bg-slate-800
+                              text-slate-500
+                              dark:text-slate-400
+                            "
                           >
-                            <path d="M21 11.5a8.4 8.4 0 0 1-9 8.5 8.7 8.7 0 0 1-4-.9L3 21l1.5-4.5A8.5 8.5 0 1 1 21 11.5Z" />
-                          </svg>
-                        </div>
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M21 11.5a8.4 8.4 0 0 1-9 8.5 8.7 8.7 0 0 1-4-.9L3 21l1.5-4.5A8.5 8.5 0 1 1 21 11.5Z" />
+                            </svg>
+                          </div>
 
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm text-slate-700 dark:text-slate-200 truncate">
-                            {session.title || 'Chat Session'}
-                          </p>
-
-                          {session.created_at && (
-                            <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
-                              {new Date(
-                                session.created_at
-                              ).toLocaleDateString('id-ID')}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm text-slate-700 dark:text-slate-200 truncate">
+                              {session.title ||
+                                'Chat Session'}
                             </p>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
+
+                            {session.created_at && (
+                              <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                                {new Date(
+                                  session.created_at
+                                ).toLocaleDateString(
+                                  'id-ID'
+                                )}
+                              </p>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    }
+                  )}
                 </div>
 
-                {/* Muat lebih banyak */}
-                {visibleChatSessions.length < chatSessions.length ? (
+                {/* Chat pagination */}
+                {visibleChatSessions.length <
+                chatSessions.length ? (
                   <button
                     type="button"
-                    onClick={() => setChatLimit((prev) => prev + 20)}
+                    onClick={() =>
+                      setChatLimit(
+                        (prev) => prev + 20
+                      )
+                    }
                     className="
                       w-full
                       mt-2
@@ -776,8 +933,10 @@ const Sidebar = ({
                       rounded-lg
                       text-xs
                       font-medium
-                      text-blue-600 dark:text-blue-400
-                      hover:bg-blue-50 dark:hover:bg-blue-500/10
+                      text-blue-600
+                      dark:text-blue-400
+                      hover:bg-blue-50
+                      dark:hover:bg-blue-500/10
                       transition-colors
                     "
                   >
@@ -786,7 +945,9 @@ const Sidebar = ({
                 ) : chatLimit > 20 ? (
                   <button
                     type="button"
-                    onClick={() => setChatLimit(20)}
+                    onClick={() =>
+                      setChatLimit(20)
+                    }
                     className="
                       w-full
                       mt-2
@@ -794,8 +955,10 @@ const Sidebar = ({
                       rounded-lg
                       text-xs
                       font-medium
-                      text-slate-500 dark:text-slate-400
-                      hover:bg-slate-100 dark:hover:bg-slate-800
+                      text-slate-500
+                      dark:text-slate-400
+                      hover:bg-slate-100
+                      dark:hover:bg-slate-800
                       transition-colors
                     "
                   >
@@ -816,7 +979,8 @@ const Sidebar = ({
           className={`
             shrink-0
             border-t
-            border-slate-200 dark:border-slate-800
+            border-slate-200
+            dark:border-slate-800
             p-3
             ${isCollapsed ? 'flex justify-center' : ''}
           `}
@@ -827,14 +991,18 @@ const Sidebar = ({
                 type="button"
                 onClick={onLogout}
                 className="
-                  w-10 h-10
+                  w-10
+                  h-10
                   rounded-lg
                   flex
                   items-center
                   justify-center
-                  text-slate-500 dark:text-slate-400
-                  hover:bg-red-50 dark:hover:bg-red-500/10
-                  hover:text-red-600 dark:hover:text-red-400
+                  text-slate-500
+                  dark:text-slate-400
+                  hover:bg-red-50
+                  dark:hover:bg-red-500/10
+                  hover:text-red-600
+                  dark:hover:text-red-400
                   transition-colors
                 "
               >
@@ -860,26 +1028,34 @@ const Sidebar = ({
             <div className="flex items-center gap-3">
               <div
                 className="
-                  w-9 h-9
+                  w-9
+                  h-9
                   rounded-full
-                  bg-slate-100 dark:bg-slate-800
+                  bg-slate-100
+                  dark:bg-slate-800
                   flex
                   items-center
                   justify-center
                   text-sm
                   font-semibold
-                  text-slate-600 dark:text-slate-300
+                  text-slate-600
+                  dark:text-slate-300
                   shrink-0
                 "
               >
-                {(user?.name || user?.email || 'U')
+                {(user?.name ||
+                  user?.full_name ||
+                  user?.email ||
+                  'U')
                   .charAt(0)
                   .toUpperCase()}
               </div>
 
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">
-                  {user?.name || 'User'}
+                  {user?.name ||
+                    user?.full_name ||
+                    'User'}
                 </p>
 
                 <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
@@ -891,14 +1067,18 @@ const Sidebar = ({
                 type="button"
                 onClick={onLogout}
                 className="
-                  w-8 h-8
+                  w-8
+                  h-8
                   rounded-lg
                   flex
                   items-center
                   justify-center
-                  text-slate-400 dark:text-slate-500
-                  hover:bg-red-50 dark:hover:bg-red-500/10
-                  hover:text-red-600 dark:hover:text-red-400
+                  text-slate-400
+                  dark:text-slate-500
+                  hover:bg-red-50
+                  dark:hover:bg-red-500/10
+                  hover:text-red-600
+                  dark:hover:text-red-400
                   transition-colors
                   shrink-0
                 "
