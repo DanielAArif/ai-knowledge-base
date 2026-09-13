@@ -57,6 +57,7 @@ class DocumentEmbedder:
 
         self.model = TextEmbedding(
             model_name=model_name,
+            cache_dir="/tmp/fastembed_cache",
         )
 
     def _is_e5_model(self) -> bool:

@@ -135,8 +135,8 @@ const AdminChatbot = () => {
   };
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-slate-100">
-      {/* Panel Pilihan Dokumen & Chat History */}
+    <div className="flex h-full min-h-0 w-full min-w-0 overflow-hidden bg-slate-100 dark:bg-neutral-900">
+      {/* Sidebar Dokumen & Chat History */}
       <Sidebar
         documents={documents}
         loadingDocuments={loadingDocuments}
