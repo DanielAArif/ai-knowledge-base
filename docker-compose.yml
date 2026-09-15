@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
 
-  # Database PostgreSQL
+  # ============================================================
+  # PostgreSQL
+  # ============================================================
   postgres:
     image: postgres:15-alpine
     container_name: kb_postgres
@@ -16,7 +18,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # Vector Database - ChromaDB
+
+  # ============================================================
+  # ChromaDB
+  # ============================================================
   chromadb:
     image: chromadb/chroma:0.6.0
     container_name: kb_chromadb
@@ -26,15 +31,32 @@ services:
     volumes:
       - chroma_data:/data
 
-  # Backend FastAPI
+
+  # ============================================================
+  # Redis - Job Queue
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: kb_redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+
+  # ============================================================
+  # FastAPI Backend
+  # ============================================================
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+
     container_name: kb_backend
     restart: always
+
     ports:
       - "8000:8000"
+
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - SECRET_KEY=${SECRET_KEY}
@@ -45,35 +67,110 @@ services:
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - ANONYMIZED_TELEMETRY=False
-      
+
       # Gemini
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - HF_HUB_OFFLINE=1
+
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
 
     volumes:
       - ./backend:/app
       - ./backend/uploads:/app/uploads
-      - fastembed_cache:/tmp/fastembed_cache
+
     depends_on:
       - postgres
       - chromadb
+      - redis
 
-  # Frontend React (Vite)
+    # Resource limit API
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+
+
+  # ============================================================
+  # Embedding / Indexing Worker
+  # ============================================================
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    container_name: kb_worker
+    restart: always
+
+    command:
+      [
+        "celery",
+        "-A",
+        "app.worker.celery_app",
+        "worker",
+        "--loglevel=info",
+        "--concurrency=1"
+      ]
+
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+
+      # ChromaDB
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - ANONYMIZED_TELEMETRY=False
+
+      # Gemini
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+
+    volumes:
+      - ./backend:/app
+      - ./backend/uploads:/app/uploads
+
+    depends_on:
+      - postgres
+      - chromadb
+      - redis
+
+    # Embedding mendapatkan resource lebih besar
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
+
+
+  # ============================================================
+  # React Frontend
+  # ============================================================
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+
     container_name: kb_frontend
     restart: always
+
     ports:
       - "3001:3000"
+
     volumes:
       - ./frontend:/app
       - /app/node_modules
+
     depends_on:
       - backend
 
+
+# ============================================================
+# Persistent Volumes
+# ============================================================
 volumes:
   postgres_data:
   chroma_data:
-  fastembed_cache:

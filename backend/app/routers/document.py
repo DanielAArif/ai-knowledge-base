@@ -13,7 +13,11 @@ Alur upload:
         ↓
     Simpan metadata ke PostgreSQL
         ↓
-    Indexing
+    Queue indexing task
+        ↓
+    Return 202 Accepted
+        ↓
+    Celery Worker
         ↓
     Preprocessing
         ↓
@@ -27,9 +31,8 @@ Alur upload:
 from __future__ import annotations
 
 import logging
-import os
-import shutil
 import mimetypes
+import os
 import uuid
 from typing import List, Optional
 
@@ -41,6 +44,8 @@ from fastapi import (
     HTTPException,
     UploadFile,
     status,
+    WebSocket,
+    WebSocketDisconnect,
 )
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -49,14 +54,13 @@ from app.core.security import get_current_user
 from app.database import get_db
 from app.models import Document, DocumentStatus, User
 from app.schemas import DocumentResponse, DocumentUpdate
-from app.services.document.indexing import (
-    DocumentIndexingError,
-    index_document,
-)
-from app.services.embedding.dependencies import get_embedder
-from app.services.embedding.embedder import DocumentEmbedder
+from app.services.websocket import manager
+
 from app.services.vectorstore.dependencies import get_vector_store
 from app.services.vectorstore.store import VectorStore
+
+from app.worker.tasks import index_document_task
+
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +105,7 @@ os.makedirs(
 @router.post(
     "/upload",
     response_model=DocumentResponse,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 def upload_document(
     file: UploadFile = File(...),
@@ -109,15 +113,28 @@ def upload_document(
     category_id: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    embedder: DocumentEmbedder = Depends(get_embedder),
-    vector_store: VectorStore = Depends(get_vector_store),
 ):
     """
-    Upload dokumen PDF/DOCX dan melakukan indexing.
+    Upload dokumen PDF/DOCX.
+
+    Proses request hanya menangani:
+
+        1. Validasi file
+        2. Menyimpan file fisik
+        3. Menyimpan metadata PostgreSQL
+        4. Menjadwalkan indexing melalui Celery
+
+    Proses preprocessing, embedding, dan indexing
+    dijalankan oleh worker terpisah.
     """
 
+    # =========================================================
     # 1. VALIDASI NAMA FILE
-    original_filename = os.path.basename(file.filename or "")
+    # =========================================================
+
+    original_filename = os.path.basename(
+        file.filename or ""
+    )
 
     if not original_filename:
         raise HTTPException(
@@ -125,8 +142,13 @@ def upload_document(
             detail="Nama file tidak valid.",
         )
 
+    # =========================================================
     # 2. VALIDASI EXTENSION
-    file_ext = os.path.splitext(original_filename)[1].lower()
+    # =========================================================
+
+    file_ext = os.path.splitext(
+        original_filename
+    )[1].lower()
 
     if file_ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -137,7 +159,10 @@ def upload_document(
             ),
         )
 
+    # =========================================================
     # 3. VALIDASI MIME TYPE
+    # =========================================================
+
     if file.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -147,14 +172,19 @@ def upload_document(
             ),
         )
 
+    # =========================================================
     # 4. BACA FILE
+    # =========================================================
+
     try:
         contents = file.file.read()
+
     except Exception as exc:
         logger.exception(
             "Gagal membaca file upload '%s'.",
             original_filename,
         )
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Gagal membaca file.",
@@ -162,7 +192,10 @@ def upload_document(
 
     file_size = len(contents)
 
+    # =========================================================
     # 5. VALIDASI SIZE
+    # =========================================================
+
     if file_size == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -178,30 +211,50 @@ def upload_document(
             ),
         )
 
+    # =========================================================
     # 6. GENERATE NAMA FILE FISIK
-    unique_filename = f"{uuid.uuid4().hex}{file_ext}"
+    # =========================================================
+
+    unique_filename = (
+        f"{uuid.uuid4().hex}{file_ext}"
+    )
+
     saved_file_path = os.path.join(
         UPLOAD_DIR,
         unique_filename,
     )
 
+    # =========================================================
     # 7. SIMPAN FILE
+    # =========================================================
+
     try:
-        with open(saved_file_path, "wb") as buffer:
+        with open(
+            saved_file_path,
+            "wb",
+        ) as buffer:
             buffer.write(contents)
+
     except Exception as exc:
         logger.exception(
             "Gagal menyimpan file '%s'.",
             original_filename,
         )
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Gagal menyimpan file.",
         ) from exc
 
-    logger.info("File berhasil disimpan: %s", saved_file_path)
+    logger.info(
+        "File berhasil disimpan: %s",
+        saved_file_path,
+    )
 
+    # =========================================================
     # 8. SIMPAN METADATA KE POSTGRESQL
+    # =========================================================
+
     document_title = (
         title.strip()
         if title and title.strip()
@@ -211,7 +264,10 @@ def upload_document(
     new_document = Document(
         title=document_title,
         file_path=saved_file_path,
-        file_type=file_ext.replace(".", "").upper(),
+        file_type=file_ext.replace(
+            ".",
+            "",
+        ).upper(),
         file_size=file_size,
         status=DocumentStatus.PENDING,
         user_id=current_user.id,
@@ -220,75 +276,99 @@ def upload_document(
 
     try:
         db.add(new_document)
+
         db.commit()
+
         db.refresh(new_document)
+
     except Exception as exc:
         db.rollback()
+
         try:
             if os.path.exists(saved_file_path):
                 os.remove(saved_file_path)
+
         except OSError:
             logger.exception(
-                "Gagal menghapus file setelah database insert gagal: %s",
+                "Gagal menghapus file setelah "
+                "database insert gagal: %s",
                 saved_file_path,
             )
 
         logger.exception(
-            "Gagal menyimpan metadata dokumen '%s' ke database.",
+            "Gagal menyimpan metadata dokumen "
+            "'%s' ke database.",
             original_filename,
         )
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Gagal menyimpan metadata dokumen.",
         ) from exc
 
-    document_id = str(new_document.id)
+    document_id = int(
+        new_document.id
+    )
+
     logger.info(
-        "Document dibuat: id=%s, filename='%s'",
+        "Document dibuat: id=%s, filename='%s', status=PENDING",
         document_id,
         original_filename,
     )
 
-    # 9. INDEXING
+    # =========================================================
+    # 9. QUEUE INDEXING TASK
+    # =========================================================
+
     try:
-        index_document(
-            document=new_document,
-            db=db,
-            embedder=embedder,
-            vector_store=vector_store,
+        task = index_document_task.delay(
+            document_id
         )
-        db.refresh(new_document)
-    except DocumentIndexingError as exc:
-        logger.error(
-            "Indexing gagal untuk document_id=%s: %s",
+
+        logger.info(
+            "[Celery] Indexing task queued: "
+            "document_id=%s, task_id=%s",
             document_id,
-            exc,
+            task.id,
         )
+
+    except Exception as exc:
+        logger.exception(
+            "[Celery] Gagal memasukkan indexing task "
+            "ke queue: document_id=%s",
+            document_id,
+        )
+
+        # -----------------------------------------------------
+        # Jika queue gagal, ubah status menjadi FAILED
+        # -----------------------------------------------------
+
         try:
-            db.refresh(new_document)
+            new_document.status = DocumentStatus.FAILED
+
+            db.commit()
+
         except Exception:
+            db.rollback()
+
             logger.exception(
-                "Gagal refresh document_id=%s setelah indexing gagal.",
+                "Gagal mengubah status document menjadi FAILED: "
+                "document_id=%s",
                 document_id,
             )
 
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
-                f"Dokumen berhasil diupload tetapi gagal di-index: {exc}"
+                "Dokumen berhasil disimpan, "
+                "tetapi proses indexing gagal dijadwalkan."
             ),
         ) from exc
-    except Exception as exc:
-        logger.exception(
-            "Unexpected error saat indexing document_id=%s.",
-            document_id,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Terjadi kesalahan saat melakukan indexing dokumen.",
-        ) from exc
 
+    # =========================================================
     # 10. RESPONSE
+    # =========================================================
+
     return new_document
 
 
@@ -324,23 +404,78 @@ def get_user_documents(
             detail="limit harus berada antara 1 dan 100.",
         )
 
-    # Dihapus filter Document.user_id == current_user.id
     query = db.query(Document)
 
     if search:
-        query = query.filter(Document.title.ilike(f"%{search}%"))
+        query = query.filter(
+            Document.title.ilike(
+                f"%{search}%"
+            )
+        )
 
     if category_id is not None:
-        query = query.filter(Document.category_id == category_id)
+        query = query.filter(
+            Document.category_id == category_id
+        )
 
     return (
         query
-        .order_by(Document.created_at.desc())
+        .order_by(
+            Document.created_at.desc()
+        )
         .offset(skip)
         .limit(limit)
         .all()
     )
 
+# ============================================================
+# WEBSOCKET — DOCUMENT INDEXING STATUS
+# ============================================================
+
+@router.websocket(
+    "/ws/{document_id}"
+)
+async def document_status_websocket(
+    websocket: WebSocket,
+    document_id: int,
+):
+    """
+    WebSocket untuk memantau status indexing dokumen.
+
+    Client akan menerima event ketika proses indexing
+    berubah tahap.
+    """
+
+    await manager.connect(
+        document_id=document_id,
+        websocket=websocket,
+    )
+
+    try:
+        while True:
+            # Menjaga koneksi tetap hidup.
+            #
+            # Client tidak perlu mengirim data khusus.
+            # Kita hanya menunggu disconnect.
+            await websocket.receive_text()
+
+    except WebSocketDisconnect:
+        manager.disconnect(
+            document_id=document_id,
+            websocket=websocket,
+        )
+
+    except Exception:
+        logger.exception(
+            "[WebSocket] Connection error: "
+            "document_id=%s",
+            document_id,
+        )
+
+        manager.disconnect(
+            document_id=document_id,
+            websocket=websocket,
+        )
 
 # ============================================================
 # 3. GET DOCUMENT DETAIL
@@ -359,10 +494,11 @@ def get_document_by_id(
     Mengambil detail satu dokumen.
     """
 
-    # Dihapus filter Document.user_id == current_user.id
     document = (
         db.query(Document)
-        .filter(Document.id == document_id)
+        .filter(
+            Document.id == document_id
+        )
         .first()
     )
 
@@ -373,6 +509,11 @@ def get_document_by_id(
         )
 
     return document
+
+
+# ============================================================
+# 4. UPDATE DOCUMENT
+# ============================================================
 
 @router.put(
     "/{document_id}",
@@ -385,11 +526,15 @@ def update_document(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Memperbarui metadata dokumen (Judul dan/atau Kategori).
+    Memperbarui metadata dokumen
+    (Judul dan/atau Kategori).
     """
+
     document = (
         db.query(Document)
-        .filter(Document.id == document_id)
+        .filter(
+            Document.id == document_id
+        )
         .first()
     )
 
@@ -400,30 +545,47 @@ def update_document(
         )
 
     if doc_in.title is not None:
-        title_stripped = doc_in.title.strip()
+        title_stripped = (
+            doc_in.title.strip()
+        )
+
         if title_stripped:
             document.title = title_stripped
 
     if doc_in.category_id is not None:
-        document.category_id = doc_in.category_id
+        document.category_id = (
+            doc_in.category_id
+        )
 
     try:
         db.add(document)
+
         db.commit()
+
         db.refresh(document)
+
     except Exception as exc:
         db.rollback()
-        logger.exception("Gagal memperbarui metadata dokumen ID %s.", document_id)
+
+        logger.exception(
+            "Gagal memperbarui metadata "
+            "dokumen ID %s.",
+            document_id,
+        )
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Gagal memperbarui data dokumen di database.",
+            detail=(
+                "Gagal memperbarui data "
+                "dokumen di database."
+            ),
         ) from exc
 
     return document
 
 
 # ============================================================
-# 4. DOWNLOAD DOCUMENT
+# 5. DOWNLOAD DOCUMENT
 # ============================================================
 
 @router.get(
@@ -440,7 +602,9 @@ def download_document(
 
     document = (
         db.query(Document)
-        .filter(Document.id == document_id)
+        .filter(
+            Document.id == document_id
+        )
         .first()
     )
 
@@ -450,51 +614,100 @@ def download_document(
             detail="Dokumen tidak ditemukan.",
         )
 
-    if not os.path.exists(document.file_path):
+    if not os.path.exists(
+        document.file_path
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File fisik dokumen tidak ditemukan.",
         )
 
-    # 1. Ambil ekstensi asli dari file_path fisik terlebih dahulu (Lebih Akurat)
-    _, file_path_ext = os.path.splitext(document.file_path)
-    ext = file_path_ext.lstrip(".").lower()
+    # =========================================================
+    # 1. AMBIL EXTENSION FILE
+    # =========================================================
 
-    # Jika dari file_path tidak ada, gunakan file_type dari DB
+    _, file_path_ext = os.path.splitext(
+        document.file_path
+    )
+
+    ext = (
+        file_path_ext
+        .lstrip(".")
+        .lower()
+    )
+
     if not ext and document.file_type:
-        ext = str(document.file_type).lower().replace(".", "").strip()
+        ext = (
+            str(document.file_type)
+            .lower()
+            .replace(".", "")
+            .strip()
+        )
 
-    # 2. Ambil MIME Type spesifik
+    # =========================================================
+    # 2. MIME TYPE
+    # =========================================================
+
     if ext == "docx":
-        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        media_type = (
+            "application/"
+            "vnd.openxmlformats-officedocument."
+            "wordprocessingml.document"
+        )
+
     elif ext == "pdf":
         media_type = "application/pdf"
+
     else:
-        media_type, _ = mimetypes.guess_type(document.file_path)
+        media_type, _ = mimetypes.guess_type(
+            document.file_path
+        )
+
         if not media_type:
-            media_type = "application/octet-stream"
+            media_type = (
+                "application/octet-stream"
+            )
 
-    # 3. Rakit Nama File dengan Ekstensi Huruf Kecil yang Jelas
-    clean_title = document.title.strip() if document.title else f"document_{document_id}"
-    
-    # Hapus ekstensi lama dari title jika user tidak sengaja memasukkannya di judul
-    if clean_title.lower().endswith(f".{ext}"):
-        clean_title = clean_title[:-len(ext)-1]
+    # =========================================================
+    # 3. NAMA FILE DOWNLOAD
+    # =========================================================
 
-    download_filename = f"{clean_title}.{ext}"
+    clean_title = (
+        document.title.strip()
+        if document.title
+        else f"document_{document_id}"
+    )
+
+    if clean_title.lower().endswith(
+        f".{ext}"
+    ):
+        clean_title = clean_title[
+            :-len(ext) - 1
+        ]
+
+    download_filename = (
+        f"{clean_title}.{ext}"
+    )
+
+    # =========================================================
+    # 4. RESPONSE
+    # =========================================================
 
     return FileResponse(
         path=document.file_path,
         filename=download_filename,
         media_type=media_type,
         headers={
-            "Content-Disposition": f'attachment; filename="{download_filename}"'
-        }
+            "Content-Disposition": (
+                f'attachment; '
+                f'filename="{download_filename}"'
+            )
+        },
     )
 
 
 # ============================================================
-# 5. DELETE DOCUMENT
+# 6. DELETE DOCUMENT
 # ============================================================
 
 @router.delete(
@@ -505,16 +718,21 @@ def delete_document(
     document_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    vector_store: VectorStore = Depends(get_vector_store),
+    vector_store: VectorStore = Depends(
+        get_vector_store
+    ),
 ):
     """
     Menghapus dokumen.
 
-    Opsi: Jika penghapusan hanya boleh dilakukan oleh pengunggah dokumen,
-    tetapkan `Document.user_id == current_user.id`. Jika bebas, filter user_id bisa dihapus.
+    Penghapusan hanya diperbolehkan
+    untuk pemilik dokumen.
     """
 
-    # Mengizinkan pembuat dokumen untuk menghapus dokumen miliknya
+    # =========================================================
+    # 1. CARI DOCUMENT
+    # =========================================================
+
     document = (
         db.query(Document)
         .filter(
@@ -527,12 +745,21 @@ def delete_document(
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Dokumen tidak ditemukan atau Anda tidak memiliki hak akses untuk menghapusnya.",
+            detail=(
+                "Dokumen tidak ditemukan atau "
+                "Anda tidak memiliki hak akses "
+                "untuk menghapusnya."
+            ),
         )
 
-    document_id_str = str(document.id)
+    document_id_str = str(
+        document.id
+    )
 
-    # 1. HAPUS EMBEDDING CHROMADB
+    # =========================================================
+    # 2. HAPUS EMBEDDING CHROMADB
+    # =========================================================
+
     try:
         deleted = vector_store.delete_document(
             document_id=document_id_str,
@@ -540,55 +767,95 @@ def delete_document(
 
         if not deleted:
             logger.warning(
-                "Embedding ChromaDB untuk document_id=%s tidak berhasil dihapus.",
+                "Embedding ChromaDB untuk "
+                "document_id=%s tidak berhasil dihapus.",
                 document_id_str,
             )
+
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Gagal menghapus embedding dokumen dari vector store.",
+                detail=(
+                    "Gagal menghapus embedding "
+                    "dokumen dari vector store."
+                ),
             )
 
     except HTTPException:
         raise
+
     except Exception as exc:
         logger.exception(
-            "Error saat menghapus embedding document_id=%s.",
+            "Error saat menghapus embedding "
+            "document_id=%s.",
             document_id_str,
         )
+
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Gagal menghapus embedding dokumen dari vector store.",
+            detail=(
+                "Gagal menghapus embedding "
+                "dokumen dari vector store."
+            ),
         ) from exc
 
-    # 2. HAPUS FILE FISIK
-    if os.path.exists(document.file_path):
+    # =========================================================
+    # 3. HAPUS FILE FISIK
+    # =========================================================
+
+    if os.path.exists(
+        document.file_path
+    ):
         try:
-            os.remove(document.file_path)
+            os.remove(
+                document.file_path
+            )
+
         except OSError as exc:
             logger.exception(
-                "Gagal menghapus file fisik document_id=%s.",
+                "Gagal menghapus file fisik "
+                "document_id=%s.",
                 document_id_str,
             )
+
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Embedding berhasil dihapus, tetapi file fisik gagal dihapus.",
+                detail=(
+                    "Embedding berhasil dihapus, "
+                    "tetapi file fisik gagal dihapus."
+                ),
             ) from exc
 
-    # 3. HAPUS RECORD POSTGRESQL
+    # =========================================================
+    # 4. HAPUS RECORD POSTGRESQL
+    # =========================================================
+
     try:
         db.delete(document)
+
         db.commit()
+
     except Exception as exc:
         db.rollback()
+
         logger.exception(
-            "Gagal menghapus record database document_id=%s.",
+            "Gagal menghapus record database "
+            "document_id=%s.",
             document_id_str,
         )
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="File dan embedding mungkin sudah terhapus, tetapi record database gagal dihapus.",
+            detail=(
+                "File dan embedding mungkin sudah "
+                "terhapus, tetapi record database "
+                "gagal dihapus."
+            ),
         ) from exc
 
-    logger.info("Dokumen berhasil dihapus: document_id=%s", document_id_str)
+    logger.info(
+        "Dokumen berhasil dihapus: "
+        "document_id=%s",
+        document_id_str,
+    )
 
     return None

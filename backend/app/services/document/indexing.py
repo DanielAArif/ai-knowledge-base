@@ -3,6 +3,13 @@ indexing.py
 
 Service untuk melakukan indexing dokumen:
 file -> preprocessing -> embedding -> ChromaDB -> update status PostgreSQL.
+
+Proses indexing dipanggil oleh background task sehingga tidak
+memblokir request upload.
+
+Selain memperbarui status PostgreSQL, service ini juga mengirimkan
+event progress melalui Redis Pub/Sub agar dapat diteruskan ke
+client melalui WebSocket.
 """
 
 from __future__ import annotations
@@ -12,10 +19,12 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from app.models import Document, DocumentStatus
+from app.models import Document, DocumentStatus, ChatSession
 from app.services.embedding.embedder import DocumentEmbedder
 from app.services.preprocessing.pipeline import preprocess_document
 from app.services.vectorstore.store import VectorStore
+from app.services.websocket.publisher import publish_document_status
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,41 +33,115 @@ class DocumentIndexingError(RuntimeError):
     """Dilempar ketika proses indexing dokumen gagal."""
 
 
+# ============================================================
+# PUBLISH STATUS
+# ============================================================
+
+def _publish_status(
+    document_id: int,
+    status: str,
+    message: str,
+    progress: int | None = None,
+) -> None:
+    """
+    Mengirim event status indexing ke Redis.
+
+    Kegagalan publish event tidak boleh menghentikan proses
+    indexing utama.
+    """
+
+    try:
+        publish_document_status(
+            document_id=document_id,
+            status=status,
+            message=message,
+            progress=progress,
+        )
+
+    except Exception:
+        logger.exception(
+            "[Indexing] Gagal mengirim status WebSocket "
+            "document_id=%s, status=%s.",
+            document_id,
+            status,
+        )
+
+
+# ============================================================
+# MARK DOCUMENT AS FAILED
+# ============================================================
+
 def _mark_failed(
     document_id: int,
     db: Session,
+    error_message: str | None = None,
 ) -> None:
     """
     Mengubah status dokumen menjadi FAILED.
 
-    Fungsi ini dipanggil setelah rollback agar perubahan status
-    tidak ikut hilang bersama transaksi yang gagal.
+    Fungsi ini menggunakan database session yang sama dengan
+    proses indexing karena proses indexing dijalankan sebagai
+    background task dengan session tersendiri.
+
+    Selain mengubah status PostgreSQL, fungsi ini juga mengirim
+    event FAILED melalui Redis/WebSocket.
     """
 
     try:
+        # Pastikan transaksi sebelumnya dibatalkan terlebih dahulu.
         db.rollback()
 
-        document = db.get(Document, document_id)
+        document = db.get(
+            Document,
+            document_id,
+        )
 
         if document is None:
             logger.error(
-                "Tidak dapat mengubah status FAILED. "
+                "[Indexing] Tidak dapat mengubah status FAILED. "
                 "Document id=%s tidak ditemukan.",
                 document_id,
             )
             return
 
         document.status = DocumentStatus.FAILED
+
         db.commit()
+
+        logger.info(
+            "[Indexing] Status document_id=%s → FAILED",
+            document_id,
+        )
 
     except Exception:
         db.rollback()
 
         logger.exception(
-            "Gagal mengubah status document_id=%s menjadi FAILED.",
+            "[Indexing] Gagal mengubah status "
+            "document_id=%s menjadi FAILED.",
             document_id,
         )
 
+    finally:
+        # Event WebSocket tetap dikirim setelah proses status
+        # database ditangani.
+        message = (
+            error_message
+            if error_message
+            else "Document indexing failed."
+        )
+
+        _publish_status(
+            document_id=document_id,
+            status="failed",
+            message=message,
+            progress=None,
+        )
+
+
+# ============================================================
+# INDEX DOCUMENT
+# ============================================================
 
 def index_document(
     document: Document,
@@ -85,9 +168,21 @@ def index_document(
               ↓
         COMPLETED
 
+    Event WebSocket:
+
+        processing
+              ↓
+        preprocessing
+              ↓
+        embedding
+              ↓
+        storing
+              ↓
+        completed
+
     Jika salah satu tahap gagal:
 
-        → FAILED
+        → failed
 
     Parameter
     ---------
@@ -95,7 +190,7 @@ def index_document(
         Object Document dari PostgreSQL.
 
     db:
-        SQLAlchemy Session.
+        SQLAlchemy Session khusus untuk background task.
 
     embedder:
         Singleton DocumentEmbedder.
@@ -109,18 +204,36 @@ def index_document(
         Jika proses indexing gagal.
     """
 
-    document_id = document.id
-    chroma_document_id = str(document_id)
-    file_path = Path(document.file_path)
+    document_id = int(document.id)
+
+    chroma_document_id = str(
+        document_id
+    )
+
+    file_path = Path(
+        document.file_path
+    )
 
     logger.info(
-        "Mulai indexing document_id=%s, file=%s",
+        "[Indexing] Mulai indexing "
+        "document_id=%s, file=%s",
         document_id,
         file_path,
     )
 
     # =========================================================
-    # 1. VALIDASI FILE
+    # 1. STATUS → PROCESSING
+    # =========================================================
+
+    _publish_status(
+        document_id=document_id,
+        status="processing",
+        message="Starting document indexing...",
+        progress=None,
+    )
+
+    # =========================================================
+    # 2. VALIDASI FILE
     # =========================================================
 
     if not file_path.exists():
@@ -129,14 +242,20 @@ def index_document(
         )
 
         logger.error(
-            "Indexing gagal document_id=%s: %s",
+            "[Indexing] Gagal document_id=%s: %s",
             document_id,
             error_message,
         )
 
-        _mark_failed(document_id, db)
+        _mark_failed(
+            document_id,
+            db,
+            error_message,
+        )
 
-        raise DocumentIndexingError(error_message)
+        raise DocumentIndexingError(
+            error_message
+        )
 
     if not file_path.is_file():
         error_message = (
@@ -144,45 +263,79 @@ def index_document(
         )
 
         logger.error(
-            "Indexing gagal document_id=%s: %s",
+            "[Indexing] Gagal document_id=%s: %s",
             document_id,
             error_message,
         )
 
-        _mark_failed(document_id, db)
+        _mark_failed(
+            document_id,
+            db,
+            error_message,
+        )
 
-        raise DocumentIndexingError(error_message)
+        raise DocumentIndexingError(
+            error_message
+        )
 
     # =========================================================
-    # 2. STATUS → PROCESSING
+    # 3. STATUS DATABASE → PROCESSING
     # =========================================================
 
     try:
-        document.status = DocumentStatus.PROCESSING
+        document.status = (
+            DocumentStatus.PROCESSING
+        )
+
         db.commit()
 
         logger.info(
-            "Status document_id=%s → PROCESSING",
+            "[Indexing] Status document_id=%s → PROCESSING",
             document_id,
         )
 
     except Exception as exc:
         db.rollback()
 
+        error_message = (
+            "Gagal mengubah status dokumen "
+            f"menjadi PROCESSING: {exc}"
+        )
+
         logger.exception(
-            "Gagal mengubah status document_id=%s menjadi PROCESSING.",
-            document_id,
+            "[Indexing] %s",
+            error_message,
+        )
+
+        _publish_status(
+            document_id=document_id,
+            status="failed",
+            message=error_message,
+            progress=None,
         )
 
         raise DocumentIndexingError(
-            f"Gagal mengubah status dokumen menjadi PROCESSING: {exc}"
+            error_message
         ) from exc
 
     # =========================================================
-    # 3. PREPROCESSING
+    # 4. PREPROCESSING
     # =========================================================
 
+    _publish_status(
+        document_id=document_id,
+        status="preprocessing",
+        message="Processing document...",
+        progress=None,
+    )
+
     try:
+        logger.info(
+            "[Indexing] Preprocessing dimulai "
+            "document_id=%s",
+            document_id,
+        )
+
         processed_document = preprocess_document(
             filepath=str(file_path),
             document_id=chroma_document_id,
@@ -195,7 +348,7 @@ def index_document(
             )
 
         logger.info(
-            "Preprocessing berhasil: "
+            "[Indexing] Preprocessing berhasil "
             "document_id=%s, segments=%d, chunks=%d",
             document_id,
             processed_document.num_segments,
@@ -203,20 +356,52 @@ def index_document(
         )
 
     except Exception as exc:
-        _mark_failed(document_id, db)
+        if isinstance(
+            exc,
+            DocumentIndexingError,
+        ):
+            error_message = str(exc)
+        else:
+            error_message = (
+                "Gagal melakukan preprocessing "
+                f"dokumen: {exc}"
+            )
 
-        if isinstance(exc, DocumentIndexingError):
+        _mark_failed(
+            document_id,
+            db,
+            error_message,
+        )
+
+        if isinstance(
+            exc,
+            DocumentIndexingError,
+        ):
             raise
 
         raise DocumentIndexingError(
-            f"Gagal melakukan preprocessing dokumen: {exc}"
+            error_message
         ) from exc
 
     # =========================================================
-    # 4. EMBEDDING
+    # 5. EMBEDDING
     # =========================================================
 
+    _publish_status(
+        document_id=document_id,
+        status="embedding",
+        message="Generating embeddings...",
+        progress=None,
+    )
+
     try:
+        logger.info(
+            "[Indexing] Embedding dimulai "
+            "document_id=%s, chunks=%d",
+            document_id,
+            processed_document.num_chunks,
+        )
+
         embedded_document = embedder.embed(
             processed_document
         )
@@ -228,29 +413,64 @@ def index_document(
             )
 
         logger.info(
-            "Embedding berhasil: "
+            "[Indexing] Embedding berhasil "
             "document_id=%s, chunks=%d",
             document_id,
-            len(embedded_document.embedded_chunks),
+            len(
+                embedded_document.embedded_chunks
+            ),
         )
 
     except Exception as exc:
-        _mark_failed(document_id, db)
+        if isinstance(
+            exc,
+            DocumentIndexingError,
+        ):
+            error_message = str(exc)
+        else:
+            error_message = (
+                "Gagal melakukan embedding "
+                f"dokumen: {exc}"
+            )
 
-        if isinstance(exc, DocumentIndexingError):
+        _mark_failed(
+            document_id,
+            db,
+            error_message,
+        )
+
+        if isinstance(
+            exc,
+            DocumentIndexingError,
+        ):
             raise
 
         raise DocumentIndexingError(
-            f"Gagal melakukan embedding dokumen: {exc}"
+            error_message
         ) from exc
 
     # =========================================================
-    # 5. SIMPAN KE CHROMADB
+    # 6. SIMPAN KE CHROMADB
     # =========================================================
 
+    _publish_status(
+        document_id=document_id,
+        status="storing",
+        message="Storing document vectors...",
+        progress=None,
+    )
+
     try:
-        stored_document = vector_store.add_document(
-            embedded_document
+        logger.info(
+            "[Indexing] Menyimpan ke ChromaDB "
+            "document_id=%s",
+            document_id,
+        )
+
+        stored_document = (
+            vector_store.add_document(
+                embedded_document
+            )
         )
 
         if not stored_document.success:
@@ -260,28 +480,49 @@ def index_document(
             )
 
         logger.info(
-            "Vector store berhasil: "
+            "[Indexing] ChromaDB berhasil "
             "document_id=%s, chunks=%d",
             document_id,
             stored_document.num_chunks,
         )
 
     except Exception as exc:
-        _mark_failed(document_id, db)
+        if isinstance(
+            exc,
+            DocumentIndexingError,
+        ):
+            error_message = str(exc)
+        else:
+            error_message = (
+                "Gagal menyimpan dokumen ke "
+                f"vector store: {exc}"
+            )
 
-        if isinstance(exc, DocumentIndexingError):
+        _mark_failed(
+            document_id,
+            db,
+            error_message,
+        )
+
+        if isinstance(
+            exc,
+            DocumentIndexingError,
+        ):
             raise
 
         raise DocumentIndexingError(
-            f"Gagal menyimpan dokumen ke vector store: {exc}"
+            error_message
         ) from exc
 
-    # =========================================================
-    # 6. STATUS → COMPLETED
+        # =========================================================
+    # 7. STATUS → COMPLETED
     # =========================================================
 
     try:
-        document = db.get(Document, document_id)
+        document = db.get(
+            Document,
+            document_id,
+        )
 
         if document is None:
             raise DocumentIndexingError(
@@ -289,12 +530,17 @@ def index_document(
                 "tidak ditemukan saat menyelesaikan indexing."
             )
 
-        document.status = DocumentStatus.COMPLETED
+        document.status = (
+            DocumentStatus.COMPLETED
+        )
+
         db.commit()
 
         logger.info(
-            "Indexing selesai: "
-            "document_id=%s, status=COMPLETED, chunks=%d",
+            "[Indexing] Indexing selesai "
+            "document_id=%s, "
+            "status=COMPLETED, "
+            "chunks=%d",
             document_id,
             stored_document.num_chunks,
         )
@@ -302,17 +548,109 @@ def index_document(
     except Exception as exc:
         db.rollback()
 
+        error_message = (
+            "Indexing berhasil tetapi gagal "
+            "memperbarui status dokumen: "
+            f"{exc}"
+        )
+
         logger.exception(
-            "Gagal mengubah status document_id=%s menjadi COMPLETED.",
+            "[Indexing] Gagal mengubah status "
+            "document_id=%s menjadi COMPLETED.",
             document_id,
         )
 
-        # Jangan mencoba memproses ulang indexing di sini.
-        # Jika ChromaDB sudah berhasil menyimpan data, dokumen
-        # kemungkinan sudah ter-index meskipun status PostgreSQL
-        # gagal diperbarui.
+        _publish_status(
+            document_id=document_id,
+            status="failed",
+            message=error_message,
+            progress=None,
+        )
+
+        # Jangan mencoba mengulang indexing.
+        #
+        # Jika ChromaDB sudah berhasil menyimpan embedding,
+        # data kemungkinan sudah ter-index meskipun status
+        # PostgreSQL gagal diperbarui.
+
         raise DocumentIndexingError(
-            f"Indexing berhasil tetapi gagal memperbarui "
-            f"status dokumen: {exc}"
+            error_message
         ) from exc
 
+    # =========================================================
+    # 8. CREATE DOCUMENT CHAT SESSION
+    # =========================================================
+
+    try:
+        existing_session = (
+            db.query(ChatSession)
+            .filter(
+                ChatSession.user_id == document.user_id,
+                ChatSession.document_id == document.id,
+            )
+            .first()
+        )
+
+        if not existing_session:
+            chat_session = ChatSession(
+                title=(
+                    f"Chat: "
+                    f"{document.title or document.filename}"
+                ),
+                user_id=document.user_id,
+                document_id=document.id,
+            )
+
+            db.add(chat_session)
+            db.commit()
+
+            logger.info(
+                "[Indexing] Document chat session dibuat "
+                "document_id=%s, user_id=%s",
+                document.id,
+                document.user_id,
+            )
+        else:
+            logger.info(
+                "[Indexing] Document chat session sudah ada "
+                "document_id=%s, session_id=%s",
+                document.id,
+                existing_session.id,
+            )
+
+    except Exception as exc:
+        db.rollback()
+
+        error_message = (
+            "Indexing berhasil tetapi gagal "
+            "membuat document chat session: "
+            f"{exc}"
+        )
+
+        logger.exception(
+            "[Indexing] Gagal membuat ChatSession "
+            "document_id=%s.",
+            document_id,
+        )
+
+        _publish_status(
+            document_id=document_id,
+            status="failed",
+            message=error_message,
+            progress=None,
+        )
+
+        raise DocumentIndexingError(
+            error_message
+        ) from exc
+
+    # =========================================================
+    # 9. PUBLISH COMPLETED
+    # =========================================================
+
+    _publish_status(
+        document_id=document_id,
+        status="completed",
+        message="Document indexing completed.",
+        progress=100,
+    )

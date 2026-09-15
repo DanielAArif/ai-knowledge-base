@@ -1,9 +1,9 @@
 # app/routers/chat.py
 from typing import List, Optional
 from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from sqlalchemy import select, or_
 
 from app.database import get_db
 from app.core.security import get_current_user
@@ -26,7 +26,11 @@ router = APIRouter(
 # 1. MANAGEMENT SESI CHAT (CHAT SESSIONS)
 # ============================================================
 
-@router.post("/sessions", response_model=ChatSessionResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/sessions",
+    response_model=ChatSessionResponse,
+    status_code=status.HTTP_201_CREATED
+)
 def create_chat_session(
     session_data: ChatSessionCreate,
     db: Session = Depends(get_db),
@@ -34,16 +38,26 @@ def create_chat_session(
 ):
     """
     Membuat sesi chat baru.
-    - `document_id = null` -> Chatbot Global
-    - `document_id = ID` -> Chatbot khusus dokumen spesifik
+
+    - document_id = null -> Chatbot Global
+    - document_id = ID    -> Chatbot khusus dokumen spesifik
     """
-    # Jika memasukkan document_id, pastikan dokumen tersebut ada
+
     if session_data.document_id:
         doc = db.get(Document, session_data.document_id)
+
         if not doc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Dokumen yang dipilih tidak ditemukan."
+            )
+
+        # Document chat hanya boleh dibuat
+        # jika indexing RAG sudah selesai.
+        if doc.status != "completed":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Dokumen belum siap digunakan untuk RAG."
             )
 
     new_session = ChatSession(
@@ -55,6 +69,7 @@ def create_chat_session(
     db.add(new_session)
     db.commit()
     db.refresh(new_session)
+
     return new_session
 
 

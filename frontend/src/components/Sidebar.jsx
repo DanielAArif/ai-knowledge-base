@@ -18,7 +18,23 @@ const Sidebar = ({
   const [documentLimit, setDocumentLimit] = useState(20);
   const [chatLimit, setChatLimit] = useState(20);
 
+  // ============================================================
+  // FILTER DOKUMEN
+  // ============================================================
+
+  /*
+   * Hanya dokumen yang sudah selesai indexing
+   * yang boleh digunakan untuk document-specific chat.
+   */
   const filteredDocuments = documents.filter((doc) => {
+    const status = String(
+      doc.status || ''
+    ).toLowerCase();
+
+    if (status !== 'completed') {
+      return false;
+    }
+
     const query = searchDocQuery.toLowerCase();
 
     return (
@@ -27,26 +43,84 @@ const Sidebar = ({
     );
   });
 
-  const visibleDocuments = filteredDocuments.slice(0, documentLimit);
-  const visibleChatSessions = chatSessions.slice(0, chatLimit);
+  const visibleDocuments =
+    filteredDocuments.slice(
+      0,
+      documentLimit
+    );
+
+  const visibleChatSessions =
+    chatSessions.slice(
+      0,
+      chatLimit
+    );
+
+  // ============================================================
+  // CREATE / OPEN GLOBAL CHAT
+  // ============================================================
 
   const handleCreateGlobalChat = async () => {
-    const session = await onCreateSession(null, 'Global Chat');
+    const session = await onCreateSession(
+      null,
+      'Global Chat'
+    );
 
     if (session) {
       setActiveSession(session);
     }
   };
 
-  const handleCreateDocumentChat = async (documentId) => {
-    const session = await onCreateSession(documentId);
+  // ============================================================
+  // OPEN DOCUMENT CHAT
+  // ============================================================
+
+  const handleCreateDocumentChat = async (
+    documentId
+  ) => {
+    /*
+     * Backend otomatis membuat document-specific
+     * ChatSession setelah indexing dokumen selesai.
+     *
+     * Oleh karena itu, cari session yang sudah ada
+     * terlebih dahulu agar tidak membuat duplicate session.
+     */
+    const existingSession =
+      chatSessions.find(
+        (session) =>
+          String(session.document_id) ===
+          String(documentId)
+      );
+
+    if (existingSession) {
+      setActiveSession(existingSession);
+      return;
+    }
+
+    /*
+     * Fallback:
+     * Jika session belum tersedia di state frontend,
+     * minta backend membuat session.
+     *
+     * Backend tetap melakukan validasi bahwa
+     * dokumen harus berstatus COMPLETED.
+     */
+    const session =
+      await onCreateSession(documentId);
 
     if (session) {
       setActiveSession(session);
     }
   };
 
-  const handleDownload = async (e, documentId, documentTitle) => {
+  // ============================================================
+  // DOWNLOAD DOCUMENT
+  // ============================================================
+
+  const handleDownload = async (
+    e,
+    documentId,
+    documentTitle
+  ) => {
     e.stopPropagation();
 
     try {
@@ -60,60 +134,103 @@ const Sidebar = ({
       let filename = '';
 
       const disposition =
-        response.headers['content-disposition'];
+        response.headers[
+          'content-disposition'
+        ];
 
       if (
         disposition &&
-        disposition.includes('filename=')
+        disposition.includes(
+          'filename='
+        )
       ) {
         const filenameMatch =
-          disposition.match(/filename="?([^";]+)"?/);
+          disposition.match(
+            /filename="?([^";]+)"?/
+          );
 
-        if (filenameMatch && filenameMatch[1]) {
-          filename = filenameMatch[1];
+        if (
+          filenameMatch &&
+          filenameMatch[1]
+        ) {
+          filename =
+            filenameMatch[1];
         }
       }
 
       if (!filename) {
         filename =
-          documentTitle || `document-${documentId}`;
+          documentTitle ||
+          `document-${documentId}`;
       }
 
       const contentType =
-        response.headers['content-type'] || '';
+        response.headers[
+          'content-type'
+        ] || '';
 
       if (
-        contentType.includes('wordprocessingml') ||
+        contentType.includes(
+          'wordprocessingml'
+        ) ||
         contentType.includes('docx')
       ) {
-        if (!filename.toLowerCase().endsWith('.docx')) {
+        if (
+          !filename
+            .toLowerCase()
+            .endsWith('.docx')
+        ) {
           filename = `${filename}.docx`;
         }
-      } else if (contentType.includes('pdf')) {
-        if (!filename.toLowerCase().endsWith('.pdf')) {
+      } else if (
+        contentType.includes('pdf')
+      ) {
+        if (
+          !filename
+            .toLowerCase()
+            .endsWith('.pdf')
+        ) {
           filename = `${filename}.pdf`;
         }
       }
 
-      const blob = new Blob([response.data], {
-        type:
-          contentType || 'application/octet-stream',
-      });
+      const blob = new Blob(
+        [response.data],
+        {
+          type:
+            contentType ||
+            'application/octet-stream',
+        }
+      );
 
       const downloadUrl =
-        window.URL.createObjectURL(blob);
+        window.URL.createObjectURL(
+          blob
+        );
 
-      const link = document.createElement('a');
+      const link =
+        document.createElement('a');
 
       link.href = downloadUrl;
-      link.setAttribute('download', filename);
 
-      document.body.appendChild(link);
+      link.setAttribute(
+        'download',
+        filename
+      );
+
+      document.body.appendChild(
+        link
+      );
+
       link.click();
 
-      link.parentNode.removeChild(link);
+      link.parentNode.removeChild(
+        link
+      );
 
-      window.URL.revokeObjectURL(downloadUrl);
+      window.URL.revokeObjectURL(
+        downloadUrl
+      );
     } catch (error) {
       console.error(
         'Gagal mengunduh dokumen:',
@@ -122,8 +239,14 @@ const Sidebar = ({
     }
   };
 
+  // ============================================================
+  // TOOLTIP
+  // ============================================================
+
   const Tooltip = ({ text }) => {
-    if (!isCollapsed) return null;
+    if (!isCollapsed) {
+      return null;
+    }
 
     return (
       <div
@@ -157,28 +280,33 @@ const Sidebar = ({
 
   return (
     <aside
-    className={`
-      relative
-      shrink-0
-      h-full
-      border-r
-      border-slate-200
-      dark:border-slate-800
-      bg-white
-      dark:bg-neutral-950
-      flex
-      flex-col
-      select-none
-      overflow-hidden
-      transition-[width]
-      duration-300
-      ease-in-out
-      ${isCollapsed ? 'w-16' : 'w-80'}
-    `}
-  >
+      className={`
+        relative
+        shrink-0
+        h-full
+        border-r
+        border-slate-200
+        dark:border-slate-800
+        bg-white
+        dark:bg-neutral-950
+        flex
+        flex-col
+        select-none
+        overflow-hidden
+        transition-[width]
+        duration-300
+        ease-in-out
+        ${
+          isCollapsed
+            ? 'w-16'
+            : 'w-80'
+        }
+      `}
+    >
       {/* =========================
           HEADER
       ========================== */}
+
       <div
         className={`
           h-16
@@ -236,12 +364,13 @@ const Sidebar = ({
           </div>
         )}
 
-        {/* Collapse Button */}
         <div className="relative group">
           <button
             type="button"
             onClick={() =>
-              setIsCollapsed((prev) => !prev)
+              setIsCollapsed(
+                (prev) => !prev
+              )
             }
             className="
               w-9
@@ -316,9 +445,11 @@ const Sidebar = ({
       {/* =========================
           COLLAPSED NAVIGATION
       ========================== */}
+
       {isCollapsed ? (
         <div className="flex-1 flex flex-col items-center py-4 gap-2">
           {/* Search */}
+
           <div className="relative group">
             <button
               type="button"
@@ -355,7 +486,11 @@ const Sidebar = ({
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
-                <circle cx="11" cy="11" r="7" />
+                <circle
+                  cx="11"
+                  cy="11"
+                  r="7"
+                />
                 <path d="m20 20-4-4" />
               </svg>
             </button>
@@ -364,10 +499,13 @@ const Sidebar = ({
           </div>
 
           {/* Global Chat */}
+
           <div className="relative group">
             <button
               type="button"
-              onClick={handleCreateGlobalChat}
+              onClick={
+                handleCreateGlobalChat
+              }
               className={`
                 w-10
                 h-10
@@ -401,10 +539,13 @@ const Sidebar = ({
           </div>
 
           {/* Documents */}
+
           <div className="relative group">
             <button
               type="button"
-              onClick={() => setIsCollapsed(false)}
+              onClick={() =>
+                setIsCollapsed(false)
+              }
               className="
                 w-10
                 h-10
@@ -442,10 +583,13 @@ const Sidebar = ({
           </div>
 
           {/* Chat History */}
+
           <div className="relative group">
             <button
               type="button"
-              onClick={() => setIsCollapsed(false)}
+              onClick={() =>
+                setIsCollapsed(false)
+              }
               className="
                 w-10
                 h-10
@@ -472,7 +616,11 @@ const Sidebar = ({
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
-                <circle cx="12" cy="12" r="9" />
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="9"
+                />
                 <path d="M12 7v5l3 2" />
               </svg>
             </button>
@@ -484,8 +632,10 @@ const Sidebar = ({
         /* =========================
            EXPANDED CONTENT
         ========================== */
+
         <div className="flex-1 overflow-y-auto p-3 space-y-4">
           {/* Search */}
+
           <div>
             <div className="relative">
               <svg
@@ -499,7 +649,11 @@ const Sidebar = ({
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
-                <circle cx="11" cy="11" r="7" />
+                <circle
+                  cx="11"
+                  cy="11"
+                  r="7"
+                />
                 <path d="m20 20-4-4" />
               </svg>
 
@@ -507,7 +661,10 @@ const Sidebar = ({
                 type="text"
                 value={searchDocQuery}
                 onChange={(e) => {
-                  setSearchDocQuery(e.target.value);
+                  setSearchDocQuery(
+                    e.target.value
+                  );
+
                   setDocumentLimit(20);
                 }}
                 placeholder="Cari dokumen..."
@@ -542,10 +699,13 @@ const Sidebar = ({
           </div>
 
           {/* Global Chat */}
+
           <section>
             <button
               type="button"
-              onClick={handleCreateGlobalChat}
+              onClick={
+                handleCreateGlobalChat
+              }
               className="
                 w-full
                 flex
@@ -600,6 +760,7 @@ const Sidebar = ({
           </section>
 
           {/* Documents */}
+
           <section>
             <div className="flex items-center justify-between px-1 mb-2">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -613,14 +774,17 @@ const Sidebar = ({
 
             {loadingDocuments ? (
               <div className="space-y-2">
-                {[1, 2, 3].map((item) => (
-                  <div
-                    key={item}
-                    className="h-12 rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse"
-                  />
-                ))}
+                {[1, 2, 3].map(
+                  (item) => (
+                    <div
+                      key={item}
+                      className="h-12 rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse"
+                    />
+                  )
+                )}
               </div>
-            ) : filteredDocuments.length === 0 ? (
+            ) : filteredDocuments.length ===
+              0 ? (
               <div className="px-2 py-4 text-center">
                 <p className="text-xs text-slate-400 dark:text-slate-500">
                   Tidak ada dokumen
@@ -629,146 +793,155 @@ const Sidebar = ({
             ) : (
               <>
                 <div className="space-y-1">
-                  {visibleDocuments.map((doc) => {
-                    const isActive =
-                      activeSession?.document_id ===
-                      doc.id;
+                  {visibleDocuments.map(
+                    (doc) => {
+                      const isActive =
+                        String(
+                          activeSession?.document_id
+                        ) ===
+                        String(doc.id);
 
-                    return (
-                      <div
-                        key={doc.id}
-                        className={`
-                          group
-                          relative
-                          rounded-lg
-                          transition-colors
-                          ${
-                            isActive
-                              ? 'bg-blue-100 dark:bg-blue-500/10'
-                              : 'hover:bg-blue-100 dark:hover:bg-blue-500/10'
-                          }
-                        `}
-                      >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleCreateDocumentChat(
-                              doc.id
-                            )
-                          }
-                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
+                      return (
+                        <div
+                          key={doc.id}
+                          className={`
+                            group
+                            relative
+                            rounded-lg
+                            transition-colors
+                            ${
+                              isActive
+                                ? 'bg-blue-100 dark:bg-blue-500/10'
+                                : 'hover:bg-blue-100 dark:hover:bg-blue-500/10'
+                            }
+                          `}
                         >
-                          <div
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleCreateDocumentChat(
+                                doc.id
+                              )
+                            }
+                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
+                          >
+                            <div
+                              className="
+                                w-8
+                                h-8
+                                rounded-lg
+                                bg-slate-100
+                                dark:bg-slate-800
+                                border
+                                border-slate-200
+                                dark:border-slate-700
+                                flex
+                                items-center
+                                justify-center
+                                shrink-0
+                                group-hover:bg-white
+                                dark:group-hover:bg-neutral-900
+                              "
+                            >
+                              <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="text-slate-500 dark:text-slate-400"
+                              >
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2-2h12a2 2 0 0 0 2-2V8Z" />
+                                <path d="M14 2v6h6" />
+                              </svg>
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm text-slate-700 dark:text-slate-200 truncate">
+                                {doc.title ||
+                                  doc.filename}
+                              </p>
+
+                              {doc.title &&
+                                doc.filename && (
+                                  <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                                    {
+                                      doc.filename
+                                    }
+                                  </p>
+                                )}
+                            </div>
+                          </button>
+
+                          {/* Download */}
+
+                          <button
+                            type="button"
+                            onClick={(e) =>
+                              handleDownload(
+                                e,
+                                doc.id,
+                                doc.filename ||
+                                  doc.title
+                              )
+                            }
                             className="
-                              w-8
-                              h-8
-                              rounded-lg
-                              bg-slate-100
-                              dark:bg-slate-800
-                              border
-                              border-slate-200
-                              dark:border-slate-700
+                              absolute
+                              right-2
+                              top-1/2
+                              -translate-y-1/2
+                              w-7
+                              h-7
+                              rounded-md
                               flex
                               items-center
                               justify-center
-                              shrink-0
-                              group-hover:bg-white
-                              dark:group-hover:bg-neutral-900
+                              text-slate-400
+                              dark:text-slate-500
+                              opacity-0
+                              group-hover:opacity-100
+                              hover:bg-white
+                              dark:hover:bg-neutral-900
+                              hover:text-slate-700
+                              dark:hover:text-slate-200
+                              transition-all
                             "
+                            title="Download dokumen"
                           >
                             <svg
-                              width="16"
-                              height="16"
+                              width="15"
+                              height="15"
                               viewBox="0 0 24 24"
                               fill="none"
                               stroke="currentColor"
                               strokeWidth="2"
                               strokeLinecap="round"
                               strokeLinejoin="round"
-                              className="text-slate-500 dark:text-slate-400"
                             >
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-                              <path d="M14 2v6h6" />
+                              <path d="M12 3v12" />
+                              <path d="m7 10 5 5 5-5" />
+                              <path d="M5 21h14" />
                             </svg>
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm text-slate-700 dark:text-slate-200 truncate">
-                              {doc.title ||
-                                doc.filename}
-                            </p>
-
-                            {doc.title &&
-                              doc.filename && (
-                                <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
-                                  {doc.filename}
-                                </p>
-                              )}
-                          </div>
-                        </button>
-
-                        {/* Download */}
-                        <button
-                          type="button"
-                          onClick={(e) =>
-                            handleDownload(
-                              e,
-                              doc.id,
-                              doc.filename ||
-                                doc.title
-                            )
-                          }
-                          className="
-                            absolute
-                            right-2
-                            top-1/2
-                            -translate-y-1/2
-                            w-7
-                            h-7
-                            rounded-md
-                            flex
-                            items-center
-                            justify-center
-                            text-slate-400
-                            dark:text-slate-500
-                            opacity-0
-                            group-hover:opacity-100
-                            hover:bg-white
-                            dark:hover:bg-neutral-900
-                            hover:text-slate-700
-                            dark:hover:text-slate-200
-                            transition-all
-                          "
-                          title="Download dokumen"
-                        >
-                          <svg
-                            width="15"
-                            height="15"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M12 3v12" />
-                            <path d="m7 10 5 5 5-5" />
-                            <path d="M5 21h14" />
-                          </svg>
-                        </button>
-                      </div>
-                    );
-                  })}
+                          </button>
+                        </div>
+                      );
+                    }
+                  )}
                 </div>
 
                 {/* Document pagination */}
+
                 {visibleDocuments.length <
                 filteredDocuments.length ? (
                   <button
                     type="button"
                     onClick={() =>
                       setDocumentLimit(
-                        (prev) => prev + 20
+                        (prev) =>
+                          prev + 20
                       )
                     }
                     className="
@@ -815,6 +988,7 @@ const Sidebar = ({
           </section>
 
           {/* Chat History */}
+
           <section>
             <div className="flex items-center justify-between px-1 mb-2">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -846,7 +1020,9 @@ const Sidebar = ({
                           key={session.id}
                           type="button"
                           onClick={() =>
-                            setActiveSession(session)
+                            setActiveSession(
+                              session
+                            )
                           }
                           className={`
                             w-full
@@ -917,13 +1093,15 @@ const Sidebar = ({
                 </div>
 
                 {/* Chat pagination */}
+
                 {visibleChatSessions.length <
                 chatSessions.length ? (
                   <button
                     type="button"
                     onClick={() =>
                       setChatLimit(
-                        (prev) => prev + 20
+                        (prev) =>
+                          prev + 20
                       )
                     }
                     className="
@@ -974,6 +1152,7 @@ const Sidebar = ({
       {/* =========================
           FOOTER
       ========================== */}
+
       {user?.role !== 'admin' && (
         <div
           className={`
@@ -982,7 +1161,11 @@ const Sidebar = ({
             border-slate-200
             dark:border-slate-800
             p-3
-            ${isCollapsed ? 'flex justify-center' : ''}
+            ${
+              isCollapsed
+                ? 'flex justify-center'
+                : ''
+            }
           `}
         >
           {isCollapsed ? (
