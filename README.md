@@ -117,15 +117,19 @@ All frontend dependencies are managed through the `package.json` file.
 
 ## Screenshots
 
-Add application screenshots here.
+## Application Screenshots
 
-| Login                      | Dashboard                          |
-| -------------------------- | ---------------------------------- |
-| ![Login](frontend/src/assets/login.png) | ![Dashboard](frontend/src/assets/dashboard-w.png)![Dashboard](frontend/src/assets/dashboard-b.png) |
+| Login | Dashboard |
+|:---:|:---:|
+| <img src="frontend/src/assets/login.png" width="400" alt="Login Page" /> | <img src="frontend/src/assets/dashboard-w.png" width="400" alt="Dashboard Light Mode" /> |
 
-| Document Management                | Chat                     |
-| ---------------------------------- | ------------------------ |
-| ![Documents](assets/documents.png) | ![Chat](assets/chat.png) |
+| Dashboard Dark Mode | Document Management |
+|:---:|:---:|
+| <img src="frontend/src/assets/dashboard-b.png" width="400" alt="Dashboard Dark Mode" /> | <img src="frontend/src/assets/user.png" width="400" alt="Document Management" /> |
+
+| Chat |
+|:---:|
+| <img src="frontend/src/assets/dokumind(1).png" width="600" alt="Chat Interface" /> |
 
 ## Author
 
